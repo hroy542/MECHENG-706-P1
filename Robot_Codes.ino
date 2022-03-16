@@ -519,14 +519,14 @@ void orient() { // Drives robot to TL or BR corner
 }
 
 void driveX() { // Drives robot straight in X direction using PI
-  
+  // Read ultrasonic to stop
 }
 
 void driveY() { // Drives robot straight in Y direction (turning region) using PI
-  
+  // Read long range IRs to stop
 }
 
-void turn() { // Turns robot to ensure alignment
+void turn(float angle) { // Turns robot to ensure alignment
   
 }
 
