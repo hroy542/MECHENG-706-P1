@@ -508,14 +508,21 @@ void strafe_right ()
 }
 
 void orient() { // Drives robot to TL or BR corner
+  // PSEUDOCODE
+  // Rotate slowly taking readings from ultrasonic sensor
+  // Minimum reading taken - perpendicular to wall
+  // Align and drive straight (driveX) ~20cm from wall
+  // Turn 180 degrees (turn funciton - gyro) and measure distance to other wall with ultrasonic (determine which side)
+  // If short side, reverse 5cm, then strafe left (driveY function) to starting position (15cm away)
+  // If long side, rotate 90 degrees CCW, strafe left 5 cm, then reverse to starting position (15cm away)
   
 }
 
-void driveX() { // Drives robot straight in X direction
+void driveX() { // Drives robot straight in X direction using PI
   
 }
 
-void driveY() { // Drives robot straight in Y direction (turning region)
+void driveY() { // Drives robot straight in Y direction (turning region) using PI
   
 }
 
