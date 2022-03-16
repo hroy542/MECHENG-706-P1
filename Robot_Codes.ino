@@ -516,6 +516,14 @@ void orient() { // Drives robot to TL or BR corner
   // If short side, reverse 5cm, then strafe left (driveY function) to starting position (15cm away)
   // If long side, rotate 90 degrees CCW, strafe left 5 cm, then reverse to starting position (15cm away)
   
+  
+  
+}
+  
+void align() { // aligns robot perpendicular to wall
+  // Read ultrasonic sensor
+  HC_SR04_range();
+  
 }
 
 void driveX() { // Drives robot straight in X direction using PI
