@@ -17,7 +17,7 @@ enum STATE {
 enum STAGE {
   ORIENT,
   DRIVE,
-  TURN,
+  STRAFE,
   END,
 }
 
@@ -35,9 +35,9 @@ const int TRIG_PIN = 48; // output
 const int ECHO_PIN = 49; // input
 
 //IR Sensor Pins
-const int IR_MID_BACK  = A0;
-int IR_MID_BACK_ADC = 0;
-float IR_Distance_Back
+//const int IR_MID_BACK  = A0;
+//int IR_MID_BACK_ADC = 0;
+//float IR_Distance_Back
 
 const int IR_LONG_LEFT = A1;
 int IR_LONG_LEFT_ADC = 0;
@@ -150,7 +150,7 @@ STATE running() {
     case DRIVE:
       driveX();
       break;
-    case TURN:
+    case STRAFE:
       driveY();
       break;
     case END:
@@ -520,10 +520,18 @@ void orient() { // Drives robot to TL or BR corner
 
 void driveX() { // Drives robot straight in X direction using PI
   // Read ultrasonic to stop
+  HC_SR04_range();
+  
+  if(mm <= 150) {
+    stop();
+  }
 }
 
 void driveY() { // Drives robot straight in Y direction (turning region) using PI
   // Read long range IRs to stop
+  if(IR_DISTANCE_LEFT <= 150 || IR_DISTANCE_RIGHT <= 150) {
+    stop();
+  }
 }
 
 void turn(float angle) { // Turns robot to ensure alignment
@@ -539,14 +547,14 @@ void stop() // Stops robot
 }
 
 
-void IR_distance() { // find distances using calibration curves
+void IR_distance() { // find distances using calibration curve equations
   IR_LONG_LEFT_ADC = analogRead(IR_LONG_LEFT);
   //IR_Distance_Left =
 
   IR_LONG_RIGHT_ADC = analogRead(IR_LONG_LEFT);
   //IR_Distance_Right = 
 
-  IR_MID_BACK_ADC = analogRead(IR_MID_BACK);
+  //IR_MID_BACK_ADC = analogRead(IR_MID_BACK);
   //IR_Distance_Back = 
 }
 
