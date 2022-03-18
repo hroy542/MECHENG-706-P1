@@ -154,7 +154,7 @@ STATE running() {
       orient();
       break;
     case DRIVE:
-      driveX();
+      driveX(150);
       break;
     case STRAFE:
       driveY();
