@@ -17,9 +17,11 @@ enum STATE {
 enum STAGE {
   ORIENT,
   DRIVE,
-  STRAFE,
+  TURN,
   END,
 };
+
+static STAGE operation_stage = ORIENT;
 
 //Refer to Shield Pinouts.jpg for pin locations
 
@@ -29,35 +31,58 @@ const byte left_rear = 47;
 const byte right_rear = 50;
 const byte right_front = 51;
 
+//----Ultrasound----
+const int trigPin = 34;
+const int echoPin = 35;
 
-//Default ultrasonic ranging sensor pins, these pins are defined my the Shield
-const int TRIG_PIN = 48; // output
-const int ECHO_PIN = 49; // input
+long Ultraduration;
+int Ultradistance;
+//----Ultrasound----
 
-//IR Sensor Pins
-//const int IR_MID_BACK  = A0;
-//int IR_MID_BACK_ADC = 0;
-//float IR_Distance_Back
+//----InverseKinematics----
+double FL_Ang_Vel = 0;
+double FR_Ang_Vel = 0;
+double BL_Ang_Vel = 0;
+double BR_Ang_Vel = 0;
 
-const int IR_LONG_LEFT = A1;
-int IR_LONG_LEFT_ADC = 0;
-double IR_Distance_Left = 0;
+double FLspeed_val = 0;
+double BLspeed_val = 0;
+double BRspeed_val = 0;
+double FRspeed_val = 0;
+//----InverseKinematics----
 
-const int IR_LONG_RIGHT = A2;
-int IR_LONG_RIGHT_ADC = 0;
-double IR_Distance_Right = 0;
+//----IR----
+enum IR {
+  LEFT_FRONT,
+  LEFT_BACK,
+  BACK_LEFT,
+  BACK_RIGHT,
+};
 
+// Left front long range IR
+const int IR_LONG_1 = A1;
+
+// Left back long range IR
+const int IR_LONG_2 = A2;
+
+// Back left mid range IR
+const int IR_MID_1 = A3;
+
+// Back right mid range IR
+const int IR_MID_2 = A4;
+
+//----IR----
+
+//----Kalman Filter----
 double last_est_left = 0;
 double last_est_right = 0;
 double last_var = 999;
 double process_noise = 1;
-double sensor_noise = 1;    // Change the value of sensor noise to get different KF performance
-
-// change to test different IRs
-int IR_SENSOR = IR_LONG_LEFT;
+double sensor_noise = 10;    // Change the value of sensor noise to get different KF performance
+//----Kalman Filter----
 
 //Gyro Pin and Variables
-const int gyro = A4;
+const int gyro = A6;
 int gyroADC = 0;
 
 //Ultrasonic Variables
@@ -71,6 +96,27 @@ Servo left_rear_motor;  // create servo object to control Vex Motor Controller 2
 Servo right_rear_motor;  // create servo object to control Vex Motor Controller 29
 Servo right_font_motor;  // create servo object to control Vex Motor Controller 29
 Servo turret_motor;
+
+//----InverseKinematicValues----
+int L = 007.620;
+int l = 009.078;
+int R_w = 002.54;
+//----InverseKinematicValues----
+
+//----PIDValues----
+double Kp_x = 3.38;    double Ki_x = 0.154;
+double Kp_y = 1.96;    double Ki_y = 0.205;
+double Kp_z = 2.72;    double Ki_z = 0.343;
+
+double elapsedTime;
+double error;
+double lastError;
+double input, output, setPoint;
+double cumError, rateError;
+
+double reference_x = 10;
+double reference_y = 0;
+double reference_z = 0;
 
 
 int speed_val = 100;
@@ -93,8 +139,9 @@ void setup(void)
   pinMode(LED_BUILTIN, OUTPUT);
 
   // The Trigger pin will tell the sensor to range find
-  pinMode(TRIG_PIN, OUTPUT);
-  digitalWrite(TRIG_PIN, LOW);
+  pinMode(trigPin, OUTPUT); // Sets the trigPin as an Output
+  digitalWrite(trigPin, LOW);
+  pinMode(echoPin, INPUT); // Sets the echoPin as an Input
 
   // Setup the Serial port and pointer, the pointer allows switching the debug info through the USB port(Serial) or Bluetooth port(Serial1) with ease.
   SerialCom = &Serial;
@@ -149,15 +196,15 @@ STATE running() {
     speed_change_smooth();
     Analog_Range_A4();
 
-  switch(STAGE) {
+  switch(operation_stage) {
     case ORIENT:
       orient();
       break;
     case DRIVE:
-      driveX(150);
+      drive();
       break;
-    case STRAFE:
-      driveY();
+    case TURN:
+      turn();
       break;
     case END:
       stop();
@@ -381,67 +428,6 @@ void IR_reading()
 }
 #endif
 
-//Serial command pasing
-void read_serial_command()
-{
-  if (SerialCom->available()) {
-    char val = SerialCom->read();
-    SerialCom->print("Speed:");
-    SerialCom->print(speed_val);
-    SerialCom->print(" ms ");
-
-    //Perform an action depending on the command
-    switch (val) {
-      case 'w'://Move Forward
-      case 'W':
-        forward ();
-        SerialCom->println("Forward");
-        break;
-      case 's'://Move Backwards
-      case 'S':
-        reverse ();
-        SerialCom->println("Backwards");
-        break;
-      case 'q'://Turn Left
-      case 'Q':
-        strafe_left();
-        SerialCom->println("Strafe Left");
-        break;
-      case 'e'://Turn Right
-      case 'E':
-        strafe_right();
-        SerialCom->println("Strafe Right");
-        break;
-      case 'a'://Turn Right
-      case 'A':
-        ccw();
-        SerialCom->println("ccw");
-        break;
-      case 'd'://Turn Right
-      case 'D':
-        cw();
-        SerialCom->println("cw");
-        break;
-      case '-'://Turn Right
-      case '_':
-        speed_change = -100;
-        SerialCom->println("-100");
-        break;
-      case '=':
-      case '+':
-        speed_change = 100;
-        SerialCom->println("+");
-        break;
-      default:
-        stop();
-        SerialCom->println("stop");
-        break;
-    }
-
-  }
-
-}
-
 //----------------------Motor moments------------------------
 //The Vex Motor Controller 29 use Servo Control signals to determine speed and direction, with 0 degrees meaning neutral https://en.wikipedia.org/wiki/Servo_control
 
@@ -466,54 +452,6 @@ void enable_motors()
   right_font_motor.attach(right_front);  // attaches the servo on pin right_front to turn Vex Motor Controller 29 On
 }
 
-void forward()
-{
-  left_font_motor.writeMicroseconds(1500 + speed_val);
-  left_rear_motor.writeMicroseconds(1500 + speed_val);
-  right_rear_motor.writeMicroseconds(1500 - speed_val);
-  right_font_motor.writeMicroseconds(1500 - speed_val);
-}
-
-void reverse ()
-{
-  left_font_motor.writeMicroseconds(1500 - speed_val);
-  left_rear_motor.writeMicroseconds(1500 - speed_val);
-  right_rear_motor.writeMicroseconds(1500 + speed_val);
-  right_font_motor.writeMicroseconds(1500 + speed_val);
-}
-
-void ccw ()
-{
-  left_font_motor.writeMicroseconds(1500 - speed_val);
-  left_rear_motor.writeMicroseconds(1500 - speed_val);
-  right_rear_motor.writeMicroseconds(1500 - speed_val);
-  right_font_motor.writeMicroseconds(1500 - speed_val);
-}
-
-void cw ()
-{
-  left_font_motor.writeMicroseconds(1500 + speed_val);
-  left_rear_motor.writeMicroseconds(1500 + speed_val);
-  right_rear_motor.writeMicroseconds(1500 + speed_val);
-  right_font_motor.writeMicroseconds(1500 + speed_val);
-}
-
-void strafe_left ()
-{
-  left_font_motor.writeMicroseconds(1500 - speed_val);
-  left_rear_motor.writeMicroseconds(1500 + speed_val);
-  right_rear_motor.writeMicroseconds(1500 + speed_val);
-  right_font_motor.writeMicroseconds(1500 - speed_val);
-}
-
-void strafe_right ()
-{
-  left_font_motor.writeMicroseconds(1500 + speed_val);
-  left_rear_motor.writeMicroseconds(1500 - speed_val);
-  right_rear_motor.writeMicroseconds(1500 - speed_val);
-  right_font_motor.writeMicroseconds(1500 + speed_val);
-}
-
 void orient() { // Drives robot to TL or BR corner
   // PSEUDOCODE
   // Rotate slowly taking readings from ultrasonic sensor
@@ -523,43 +461,18 @@ void orient() { // Drives robot to TL or BR corner
   // If short side, reverse 5cm, then strafe left (driveY function) to starting position (15cm away)
   // If long side, rotate 90 degrees CCW, strafe left 5 cm, then reverse to starting position (15cm away)
   
-  align();
-  driveX(200);
-  turn(180);
-  double reading = HC_SR04_range();
-  if(reading < 1200) {
-    driveX(1050);
-    driveY(150, LEFT);
-  }
-  else {
-    rotate(-90);
-    driveY(150, LEFT);
-    driveX(1050);
-  }
+  operation_stage = DRIVE;
   
 }
   
 void align() { // aligns robot perpendicular to wall
-  // Read ultrasonic sensor
-  double reading = HC_SR04_range();
   
   
 }
 
-void driveX(int target) { // Drives robot straight in X direction (forward/backwards) using PI
+void drive() { // Drives robot straight in X direction (forward/backwards) using PI
   // Read ultrasonic to stop
-  float reading = HC_SR04_range();
-  
-  if(reading <= target) {
-    stop();
-  }
-}
-
-void driveY(int target, int direction) { // Drives robot straight in Y direction (strafe) using PI
-  // Read long range IRs to stop
-  if(IR_DISTANCE_LEFT <= target || IR_DISTANCE_RIGHT <= target) {
-    stop();
-  }
+  StraightLineController(reference_x, reference_y, reference_z, Kp_x, Ki_x, Kp_y, Ki_y, Kp_z, Ki_z);  
 }
 
 void turn(int angle) { // Turns robot to ensure alignment +ve = CW, -ve = CCW
@@ -574,28 +487,125 @@ void stop() // Stops robot
   right_font_motor.writeMicroseconds(1500);
 }
 
+void StraightLineController(double reference_x, double reference_y, double reference_z, double Kp_x, double Ki_x, double Kp_y, double Ki_y, double Kp_z, double Ki_z){
+  //----Ultrasound----
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  Ultraduration = pulseIn(echoPin, HIGH);
+  // Calculating the distance
+  Ultradistance = Ultraduration * 0.034 / 2;
+  //Serial.print("Distance: ");
+  //Serial.println(Ultradistance);
+  //----Ultrasound----
+  
+  double V_x = PID_Controller(reference_x, Ultradistance, Kp_x, Ki_x);
+  double V_y = PID_Controller(reference_y, 0, Kp_y, Ki_y);
+  double V_z = PID_Controller(reference_z, 0, Kp_z, Ki_z);
 
-void IR_distance() { // find distances using calibration curve equations
-  double est_left, est_right;
-  IR_LONG_LEFT_ADC = analogRead(IR_LONG_LEFT);
-  //IR_Distance_Left =
-  est_left = Kalman(IR_Distance_Left, last_est_left);
+  //Serial.println(V_x);
+  
+  FL_Ang_Vel = FL_InverseKinematics(V_x, V_y,  V_z);
+  FR_Ang_Vel = FR_InverseKinematics( V_x, V_y, V_z);
+  BL_Ang_Vel = BL_InverseKinematics( V_x,  V_y,  V_z);
+  BR_Ang_Vel = BR_InverseKinematics( V_x, V_y,  V_z); 
 
-  IR_LONG_RIGHT_ADC = analogRead(IR_LONG_LEFT);
-  //IR_Distance_Right = 
-  est_right = Kalman(IR_Distance_Right, last_est_right);
+  //Serial.println(FL_Ang_Vel);
 
-  //IR_MID_BACK_ADC = analogRead(IR_MID_BACK);
-  //IR_Distance_Back = 
+  //Serial.print(FL_Ang_Vel);
+  
+  double FLspeed_val = WriteMicroseconds(FL_Ang_Vel/10);
+  double BLspeed_val = WriteMicroseconds(BL_Ang_Vel/10);
+  double BRpeed_val = WriteMicroseconds(BR_Ang_Vel/10);
+  double FRspeed_val = WriteMicroseconds(FR_Ang_Vel/10);
+
+  //Serial.println(FLspeed_val);
+  
+  left_front_motor.writeMicroseconds(1500 + FLspeed_val);
+  left_rear_motor.writeMicroseconds(1500 + BLspeed_val);
+  right_rear_motor.writeMicroseconds(1500 - BRspeed_val);
+  right_front_motor.writeMicroseconds(1500 - FRspeed_val);
 }
 
-float PI_Controller(float error, float Kp, float Ki) {
-  integral += error;
-  u = (Kp*error) + (Ki*integral)
-  power = constrain(u, -500, 500);
-  return power;
+  
+double FL_InverseKinematics(double v_x, double v_y, double omega_z){
+  double FL_Ang_Vel;
+  FL_Ang_Vel = (v_x + v_y -(omega_z*(L+l)))/R_w;
+  return FL_Ang_Vel;
 }
 
+double FR_InverseKinematics(double v_x, double v_y, double omega_z){
+  double FR_Ang_Vel;
+  FR_Ang_Vel = (v_x - v_y +(omega_z*(L+l)))/R_w;
+  return FR_Ang_Vel;
+}
+
+double BL_InverseKinematics(double v_x, double v_y, double omega_z){
+  double BL_Ang_Vel;
+  BL_Ang_Vel = (v_x - v_y -(omega_z*(L+l)))/R_w;
+  return BL_Ang_Vel;
+}
+
+double BR_InverseKinematics(double v_x, double v_y, double omega_z){
+  double BR_Ang_Vel;
+  BR_Ang_Vel = (v_x + v_y +(omega_z*(L+l)))/R_w;
+  return BR_Ang_Vel;
+}
+
+double PID_Controller (double reference, double current, double Kp, double Ki){
+   //Serial.println("PIDTest");
+   unsigned long currentTime, previousTime;
+   double elapsedTime, error, cumError, rateError, lastError;
+   
+   currentTime = millis();                
+   elapsedTime = (double)(currentTime - previousTime);       
+        
+   error = reference - current;     
+   //Serial.println(error);                          
+   cumError += error * elapsedTime;                
+   rateError = (error - lastError)/elapsedTime;   
+ 
+   double out = (-1)*(Kp*error + Ki*cumError);                          
+ 
+   lastError = error;                               
+   previousTime = currentTime;                       
+ 
+   return out; 
+}
+  
+double IR_filtered(IR code) { // find distances using calibration curve equations
+  double est, dist;
+  int adc;
+  
+  switch(code) {
+    case LEFT_FRONT:
+      adc = analogRead(IR_LONG_1);
+      //dist =
+      break;
+    case LEFT_BACK:
+      adc = analogRead(IR_LONG_2);
+      //dist = 
+      break;
+    case BACK_LEFT:
+      adc = analogRead(IR_MID_1);
+      //dist =
+      break;
+    case BACK_RIGHT:
+      adc = analogRead(IR_MID_2);
+      //dist = 
+      break;
+      
+  est = Kalman(dist, last_est);
+  last_est = est;  
+      
+  // might need delay dunno
+      
+  return est;
+}
+  
+// Kalman Filter for IR sensors
 double Kalman(double rawdata, double prev_est){   // Kalman Filter
   double a_priori_est, a_post_est, a_priori_var, a_post_var, kalman_gain;
 
