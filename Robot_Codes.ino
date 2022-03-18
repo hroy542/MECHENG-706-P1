@@ -85,9 +85,6 @@ double sensor_noise = 10;    // Change the value of sensor noise to get differen
 const int gyro = A6;
 int gyroADC = 0;
 
-//Ultrasonic Variables
-double mm = 0;
-
 // Anything over 400 cm (23200 us pulse) is "out of range". Hit:If you decrease to this the ranging sensor but the timeout is short, you may not need to read up to 4meters.
 const unsigned int MAX_DIST = 23200;
 
@@ -347,13 +344,12 @@ boolean is_battery_voltage_OK()
 #endif
 
 #ifndef NO_HC-SR04
-double HC_SR04_range()
+void HC_SR04_range()
 {
   unsigned long t1;
   unsigned long t2;
   unsigned long pulse_width;
   float cm;
-  float inches;
 
   // Hold the trigger pin high for at least 10 us
   digitalWrite(TRIG_PIN, HIGH);
@@ -391,7 +387,7 @@ double HC_SR04_range()
   // Calculate distance in centimeters. The constants
   // are found in the datasheet, and calculated from the assumed speed
   //of sound in air at sea level (~340 m/s).
-  cm = 11.0 + (pulse_width / 58.0); // distance from centre of robot
+  cm = 11.5 + (pulse_width / 58.0); // distance from centre of robot
   
   // Print out results
   if ( pulse_width > MAX_DIST ) {
@@ -402,7 +398,6 @@ double HC_SR04_range()
     SerialCom->println("cm");
   }
   
-  return mm;
 }
 #endif
 
@@ -471,7 +466,6 @@ void align() { // aligns robot perpendicular to wall
 }
 
 void drive() { // Drives robot straight in X direction (forward/backwards) using PI
-  // Read ultrasonic to stop
   StraightLineController(reference_x, reference_y, reference_z, Kp_x, Ki_x, Kp_y, Ki_y, Kp_z, Ki_z);  
 }
 
@@ -496,7 +490,7 @@ void StraightLineController(double reference_x, double reference_y, double refer
   digitalWrite(trigPin, LOW);
   Ultraduration = pulseIn(echoPin, HIGH);
   // Calculating the distance
-  Ultradistance = Ultraduration * 0.034 / 2;
+  Ultradistance = 11.5 + (Ultraduration * 0.034 / 2); // from centre of robot
   //Serial.print("Distance: ");
   //Serial.println(Ultradistance);
   //----Ultrasound----
