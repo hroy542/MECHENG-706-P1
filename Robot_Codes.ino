@@ -530,11 +530,11 @@ void orient() { // Drives robot to TL or BR corner
   double reading = HC_SR04_range();
   if(reading < 1200) {
     driveX(1050);
-    driveY(150);
+    driveY(150, LEFT);
   }
   else {
-    rotate(90);
-    driveY(150);
+    rotate(-90);
+    driveY(150, LEFT);
     driveX(1050);
   }
   
@@ -547,7 +547,7 @@ void align() { // aligns robot perpendicular to wall
   
 }
 
-void driveX(int target) { // Drives robot straight in X direction using PI
+void driveX(int target) { // Drives robot straight in X direction (forward/backwards) using PI
   // Read ultrasonic to stop
   float reading = HC_SR04_range();
   
@@ -556,14 +556,14 @@ void driveX(int target) { // Drives robot straight in X direction using PI
   }
 }
 
-void driveY(int target) { // Drives robot straight in Y direction (turning region) using PI
+void driveY(int target, int direction) { // Drives robot straight in Y direction (strafe) using PI
   // Read long range IRs to stop
   if(IR_DISTANCE_LEFT <= target || IR_DISTANCE_RIGHT <= target) {
     stop();
   }
 }
 
-void turn(int angle) { // Turns robot to ensure alignment
+void turn(int angle) { // Turns robot to ensure alignment +ve = CW, -ve = CCW
   
 }
 
