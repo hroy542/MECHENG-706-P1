@@ -2,7 +2,7 @@
 #include <Servo.h>  //Need for Servo pulse output
 
 //#define NO_READ_GYRO  //Uncomment of GYRO is not attached.
-//#define NO_HC-SR04 //Uncomment of HC-SR04 ultrasonic ranging sensor is not attached.
+//#define NO_HC_SR04 //Uncomment of HC-SR04 ultrasonic ranging sensor is not attached.
 //#define NO_BATTERY_V_OK //Uncomment of BATTERY_V_OK if you do not care about battery damage.
 //#define NO_READ_IR
 
@@ -47,7 +47,8 @@ const int IR_LONG_RIGHT = A2;
 int IR_LONG_RIGHT_ADC = 0;
 double IR_Distance_Right = 0;
 
-double last_est = 0;
+double last_est_left = 0;
+double last_est_right = 0;
 double last_var = 999;
 double process_noise = 1;
 double sensor_noise = 1;    // Change the value of sensor noise to get different KF performance
@@ -85,8 +86,6 @@ float error = 0;
 float integral = 0;
 float power = 0;
 float u = 0;
-
-
 
 void setup(void)
 {
@@ -169,11 +168,11 @@ STATE running() {
     GYRO_reading();
   #endif
 
-  #ifndef NO_HC-SR04
+  #ifndef NO_HC_SR04
     HC_SR04_range();
   #endif
 
-  #ifndef NO_HC-SR04
+  #ifndef NO_HC_SR04
     IR_reading();
   #endif
 
@@ -542,7 +541,7 @@ void orient() { // Drives robot to TL or BR corner
   
 void align() { // aligns robot perpendicular to wall
   // Read ultrasonic sensor
-  float reading = HC_SR04_range();
+  double reading = HC_SR04_range();
   
   
 }
@@ -577,11 +576,14 @@ void stop() // Stops robot
 
 
 void IR_distance() { // find distances using calibration curve equations
+  double est_left, est_right;
   IR_LONG_LEFT_ADC = analogRead(IR_LONG_LEFT);
   //IR_Distance_Left =
+  est_left = Kalman(IR_Distance_Left, last_est_left);
 
   IR_LONG_RIGHT_ADC = analogRead(IR_LONG_LEFT);
   //IR_Distance_Right = 
+  est_right = Kalman(IR_Distance_Right, last_est_right);
 
   //IR_MID_BACK_ADC = analogRead(IR_MID_BACK);
   //IR_Distance_Back = 
