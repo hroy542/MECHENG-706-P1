@@ -19,7 +19,7 @@ enum STAGE {
   DRIVE,
   STRAFE,
   END,
-}
+};
 
 //Refer to Shield Pinouts.jpg for pin locations
 
@@ -41,11 +41,16 @@ const int ECHO_PIN = 49; // input
 
 const int IR_LONG_LEFT = A1;
 int IR_LONG_LEFT_ADC = 0;
-float IR_Distance_Left = 0;
+double IR_Distance_Left = 0;
 
 const int IR_LONG_RIGHT = A2;
 int IR_LONG_RIGHT_ADC = 0;
-float IR_Distance_Right = 0;
+double IR_Distance_Right = 0;
+
+double last_est = 0;
+double last_var = 999;
+double process_noise = 1;
+double sensor_noise = 1;    // Change the value of sensor noise to get different KF performance
 
 // change to test different IRs
 int IR_SENSOR = IR_LONG_LEFT;
@@ -55,7 +60,7 @@ const int gyro = A4;
 int gyroADC = 0;
 
 //Ultrasonic Variables
-float mm = 0;
+double mm = 0;
 
 // Anything over 400 cm (23200 us pulse) is "out of range". Hit:If you decrease to this the ranging sensor but the timeout is short, you may not need to read up to 4meters.
 const unsigned int MAX_DIST = 23200;
@@ -80,6 +85,8 @@ float error = 0;
 float integral = 0;
 float power = 0;
 float u = 0;
+
+
 
 void setup(void)
 {
@@ -294,7 +301,7 @@ boolean is_battery_voltage_OK()
 #endif
 
 #ifndef NO_HC-SR04
-void HC_SR04_range()
+double HC_SR04_range()
 {
   unsigned long t1;
   unsigned long t2;
@@ -339,7 +346,6 @@ void HC_SR04_range()
   // are found in the datasheet, and calculated from the assumed speed
   //of sound in air at sea level (~340 m/s).
   cm = 11.0 + (pulse_width / 58.0); // distance from centre of robot
-  mm = cm * 10;
   
   // Print out results
   if ( pulse_width > MAX_DIST ) {
@@ -349,6 +355,8 @@ void HC_SR04_range()
     SerialCom->print(cm);
     SerialCom->println("cm");
   }
+  
+  return mm;
 }
 #endif
 
@@ -516,33 +524,46 @@ void orient() { // Drives robot to TL or BR corner
   // If short side, reverse 5cm, then strafe left (driveY function) to starting position (15cm away)
   // If long side, rotate 90 degrees CCW, strafe left 5 cm, then reverse to starting position (15cm away)
   
-  
+  align();
+  driveX(200);
+  turn(180);
+  double reading = HC_SR04_range();
+  if(reading < 1200) {
+    driveX(1050);
+    driveY(150);
+  }
+  else {
+    rotate(90);
+    driveY(150);
+    driveX(1050);
+  }
   
 }
   
 void align() { // aligns robot perpendicular to wall
   // Read ultrasonic sensor
-  HC_SR04_range();
+  float reading = HC_SR04_range();
+  
   
 }
 
-void driveX() { // Drives robot straight in X direction using PI
+void driveX(int target) { // Drives robot straight in X direction using PI
   // Read ultrasonic to stop
-  HC_SR04_range();
+  float reading = HC_SR04_range();
   
-  if(mm <= 150) {
+  if(reading <= target) {
     stop();
   }
 }
 
-void driveY() { // Drives robot straight in Y direction (turning region) using PI
+void driveY(int target) { // Drives robot straight in Y direction (turning region) using PI
   // Read long range IRs to stop
-  if(IR_DISTANCE_LEFT <= 150 || IR_DISTANCE_RIGHT <= 150) {
+  if(IR_DISTANCE_LEFT <= target || IR_DISTANCE_RIGHT <= target) {
     stop();
   }
 }
 
-void turn(float angle) { // Turns robot to ensure alignment
+void turn(int angle) { // Turns robot to ensure alignment
   
 }
 
@@ -571,4 +592,17 @@ float PI_Controller(float error, float Kp, float Ki) {
   u = (Kp*error) + (Ki*integral)
   power = constrain(u, -500, 500);
   return power;
+}
+
+double Kalman(double rawdata, double prev_est){   // Kalman Filter
+  double a_priori_est, a_post_est, a_priori_var, a_post_var, kalman_gain;
+
+  a_priori_est = prev_est;  
+  a_priori_var = last_var + process_noise; 
+
+  kalman_gain = a_priori_var/(a_priori_var+sensor_noise);
+  a_post_est = a_priori_est + kalman_gain*(rawdata-a_priori_est);
+  a_post_var = (1- kalman_gain)*a_priori_var;
+  last_var = a_post_var;
+  return a_post_est;
 }
