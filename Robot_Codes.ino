@@ -60,16 +60,16 @@ enum IR {
 };
 
 // Left front long range IR
-const int IR_LONG_1 = A1;
+const int IR_LONG_1 = A4;
 
 // Left back long range IR
-const int IR_LONG_2 = A2;
+const int IR_LONG_2 = A5;
 
 // Back left mid range IR
-const int IR_MID_1 = A3;
+const int IR_MID_1 = A6;
 
 // Back right mid range IR
-const int IR_MID_2 = A4;
+const int IR_MID_2 = A7;
 
 //----IR----
 
@@ -82,7 +82,7 @@ double sensor_noise = 10;    // Change the value of sensor noise to get differen
 //----Kalman Filter----
 
 //Gyro Pin and Variables
-const int gyro = A6;
+const int gyro = A8;
 int gyroADC = 0;
 
 // Anything over 400 cm (23200 us pulse) is "out of range". Hit:If you decrease to this the ranging sensor but the timeout is short, you may not need to read up to 4meters.
@@ -143,7 +143,7 @@ void setup(void)
   // Setup the Serial port and pointer, the pointer allows switching the debug info through the USB port(Serial) or Bluetooth port(Serial1) with ease.
   SerialCom = &Serial;
   SerialCom->begin(115200);
-  SerialCom->println("MECHENG706_Base_Code_25/01/2018");
+  SerialCom->println("MECHENG706_Project_1_Code_2022");
   delay(1000);
   SerialCom->println("Setup....");
 
@@ -191,7 +191,7 @@ STATE running() {
 
     SerialCom->println("RUNNING---------");
     speed_change_smooth();
-    Analog_Range_A4();
+    Analog_Range_A4();//What Does this do? - Hritom
 
   switch(operation_stage) {
     case ORIENT:
@@ -401,7 +401,7 @@ void HC_SR04_range()
 }
 #endif
 
-void Analog_Range_A4()
+void Analog_Range_A4()//Why do we need this
 {
   SerialCom->print("Analog Range A4:");
   SerialCom->println(analogRead(A4));
