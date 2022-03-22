@@ -13,9 +13,9 @@ Servo right_front_motor;
 //----MotorSetup----
 
 //----InverseKinematicValues----
-int L = 007.620;
-int l = 009.078;
-int R_w = 002.54;
+double L = 007.620;
+double l = 009.078;
+double R_w = 002.54;
 //----InverseKinematicValues----
 
 //----PIDValues----
@@ -106,9 +106,13 @@ void StraightLineController(double reference_x, double reference_y, double refer
   //Serial.print(FL_Ang_Vel);
   
   double FLspeed_val = WriteMicroseconds(FL_Ang_Vel/10);
+  contrain(FLspeed_val, 0, 500);
   double BLspeed_val = WriteMicroseconds(BL_Ang_Vel/10);
+  contrain(BLspeed_val, 0, 500);
   double BRpeed_val = WriteMicroseconds(BR_Ang_Vel/10);
+  contrain(BRspeed_val, 0, 500);
   double FRspeed_val = WriteMicroseconds(FR_Ang_Vel/10);
+  contrain(FRspeed_val, 0, 500);
 
   //Serial.println(FLspeed_val);
   
