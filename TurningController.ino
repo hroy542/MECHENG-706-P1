@@ -13,9 +13,9 @@ Servo right_front_motor;
 //----MotorSetup----
 
 //----InverseKinematicValues----
-int L = 007.620;
-int l = 009.078;
-int R_w = 002.54;
+double L = 7.620;
+double l = 9.078;
+double R_w = 2.54;
 //----InverseKinematicValues----
 
 //----PIDValues----
@@ -43,6 +43,12 @@ long Ultraduration;
 int Ultradistance;
 //----Ultrasound----
 
+//----Kalman----
+double last_est = 0;
+double last_var = 999;
+double process_noise = 1;
+double sensor_noise = 15; 
+//----Kalman----
 
 //----Gyro----
 #define PI 3.1415926535897932384626433832795
@@ -117,46 +123,46 @@ void TurningController(double reference_x, double reference_y, double reference_
   digitalWrite(trigPin, LOW);
   Ultraduration = pulseIn(echoPin, HIGH);
   // Calculating the distance
-  Ultradistance = Ultraduration * 0.034 / 2;
+  Ultradistance = 11.5 + Ultraduration * 0.034 / 2; // distance from centre of robot
   //Serial.print("Distance: ");
   //Serial.println(Ultradistance);
-//----Ultrasound----
+  //----Ultrasound----
 
-//----Gyro----
-// convert the 0-1023 signal to 0-5v 
-gyroRate = (analogRead(sensorPin)*gyroSupplyVoltage)/1023;    
- 
-// find the voltage offset the value of voltage when gyro is zero (still) 
-gyroRate -= (gyroZeroVoltage/1023*gyroSupplyVoltage);    
- 
-// read out voltage divided the gyro sensitivity to calculate the angular velocity  
-float angularVelocity = gyroRate/ gyroSensitivity; // from Data Sheet, gyroSensitivity is 0.007 V/dps 
- 
-// if the angular velocity is less than the threshold, ignore it 
-if (angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold) 
-{ 
-// we are running a loop in T (of T/1000 second).  
- float angleChange = angularVelocity/(1000/T); 
- currentAngle += angleChange;  
+  //----Gyro----
+  // convert the 0-1023 signal to 0-5v 
+  gyroRate = (analogRead(sensorPin)*gyroSupplyVoltage)/1023;    
+   
+  // find the voltage offset the value of voltage when gyro is zero (still) 
+  gyroRate -= (gyroZeroVoltage/1023*gyroSupplyVoltage);    
+   
+  // read out voltage divided the gyro sensitivity to calculate the angular velocity  
+  float angularVelocity = gyroRate/ gyroSensitivity; // from Data Sheet, gyroSensitivity is 0.007 V/dps 
+   
+  // if the angular velocity is less than the threshold, ignore it 
+  if (angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold) 
+  { 
+    // we are running a loop in T (of T/1000 second).  
+    float angleChange = angularVelocity/(1000/T); 
+    currentAngle += angleChange;  
   } 
- 
+   
   // keep the angle between 0-360 
   if (currentAngle < 0) 
     {currentAngle += 360;} 
   else if (currentAngle > 359) 
-{currentAngle -= 360;} 
-
-//Serial.println(currentAngle);
-//delay(500);
-radiansAngle = currentAngle*(3.1415/180); 
-//Serial.print(angularVelocity); 
-//Serial.print(" "); 
-//Serial.println(currentAngle); 
- 
-// control the time per loop 
-delay (T); 
-
-//----Controller----  
+    {currentAngle -= 360;} 
+  
+  //Serial.println(currentAngle);
+  //delay(500);
+  radiansAngle = currentAngle*(PI/180); 
+  //Serial.print(angularVelocity); 
+  //Serial.print(" "); 
+  //Serial.println(currentAngle); 
+   
+  // control the time per loop 
+  delay (T); 
+  
+  //----Controller----  
   double V_x = PID_Controller(reference_x, 0, Kp_x, Ki_x);
   double V_y = PID_Controller(reference_y, 0, Kp_y, Ki_y);
   double V_z = PID_Controller(reference_z, radiansAngle, Kp_z, Ki_z);
@@ -171,13 +177,18 @@ delay (T);
   //Serial.println(FL_Ang_Vel);
   
   double FLspeed_val = WriteMicroseconds(FL_Ang_Vel/1000);
+  constrain(FLspeed_val, 0, 500);
   double BLspeed_val = WriteMicroseconds(BL_Ang_Vel/1000);
+  constrain(BLspeed_val, 0, 500);
   double BRspeed_val = WriteMicroseconds(BR_Ang_Vel/1000);
+  constrain(BRspeed_val, 0, 500);
   double FRspeed_val = WriteMicroseconds(FR_Ang_Vel/1000);
+  constrain(FRspeed_val, 0, 500);
 
   //Serial.println(FLspeed_val);
   Serial.println(FRspeed_val);
-  
+
+  // CCW Rotation
   left_front_motor.writeMicroseconds(1500 - FLspeed_val);
   left_rear_motor.writeMicroseconds(1500 - BLspeed_val);
   right_rear_motor.writeMicroseconds(1500 - BRspeed_val);
@@ -239,5 +250,18 @@ double PID_Controller (double reference, double current, double Kp, double Ki){
 double WriteMicroseconds (double AngVel){
   double Microseconds = 265 - sqrt((88035/2) - (25000*AngVel));
   return Microseconds;
+}
+
+double Kalman(double RawData, double prev_est) { // Kalman filter for gyro readings
+  double a_priori_est, a_post_est, a_priori_var, a_post_var, kalman_gain;
+
+  a_priori_est = prev_est;  
+  a_priori_var = last_var + process_noise; 
+
+  kalman_gain = a_priori_var/(a_priori_var+sensor_noise);
+  a_post_est = a_priori_est + kalman_gain*(rawdata-a_priori_est);
+  a_post_var = (1- kalman_gain)*a_priori_var;
+  last_var = a_post_var;
+  return a_post_est;
 }
 //----Controller----
