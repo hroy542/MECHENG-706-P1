@@ -2,9 +2,8 @@
 #include <Servo.h>  //Need for Servo pulse output
 
 //#define NO_READ_GYRO  //Uncomment of GYRO is not attached.
-//#define NO_HC_SR04 //Uncomment of HC-SR04 ultrasonic ranging sensor is not attached.
+//#define NO_HC-SR04 //Uncomment of HC-SR04 ultrasonic ranging sensor is not attached.
 //#define NO_BATTERY_V_OK //Uncomment of BATTERY_V_OK if you do not care about battery damage.
-//#define NO_READ_IR
 
 //State machine states
 enum STATE {
@@ -73,13 +72,12 @@ const int IR_MID_2 = A7;
 
 //----IR----
 
-//----Kalman Filter----
-double last_est_left = 0;
-double last_est_right = 0;
+//----IR Kalman Filter----
+double last_est = 0;
 double last_var = 999;
 double process_noise = 1;
 double sensor_noise = 10;    // Change the value of sensor noise to get different KF performance
-//----Kalman Filter----
+//----IR Kalman Filter----
 
 //Gyro Pin and Variables
 const int gyro = A8;
@@ -88,16 +86,16 @@ int gyroADC = 0;
 // Anything over 400 cm (23200 us pulse) is "out of range". Hit:If you decrease to this the ranging sensor but the timeout is short, you may not need to read up to 4meters.
 const unsigned int MAX_DIST = 23200;
 
-Servo left_font_motor;  // create servo object to control Vex Motor Controller 29
+Servo left_front_motor;  // create servo object to control Vex Motor Controller 29
 Servo left_rear_motor;  // create servo object to control Vex Motor Controller 29
 Servo right_rear_motor;  // create servo object to control Vex Motor Controller 29
-Servo right_font_motor;  // create servo object to control Vex Motor Controller 29
-Servo turret_motor;
+Servo right_front_motor;  // create servo object to control Vex Motor Controller 29
+//Servo turret_motor;
 
 //----InverseKinematicValues----
-int L = 007.620;
-int l = 009.078;
-int R_w = 002.54;
+double L = 7.620;
+double l = 9.078;
+double R_w = 2.54;
 //----InverseKinematicValues----
 
 //----PIDValues----
@@ -124,12 +122,6 @@ HardwareSerial *SerialCom;
 
 int pos = 0;
 
-// PI Control variables
-float error = 0;
-float integral = 0;
-float power = 0;
-float u = 0;
-
 void setup(void)
 {
   turret_motor.attach(11);
@@ -148,7 +140,6 @@ void setup(void)
   SerialCom->println("Setup....");
 
   delay(1000); //settling time but no really needed
-
 }
 
 void loop(void) //main loop
@@ -212,12 +203,8 @@ STATE running() {
     GYRO_reading();
   #endif
 
-  #ifndef NO_HC_SR04
+  #ifndef NO_HC-SR04
     HC_SR04_range();
-  #endif
-
-  #ifndef NO_HC_SR04
-    IR_reading();
   #endif
 
   #ifndef NO_BATTERY_V_OK
@@ -352,16 +339,16 @@ void HC_SR04_range()
   float cm;
 
   // Hold the trigger pin high for at least 10 us
-  digitalWrite(TRIG_PIN, HIGH);
+  digitalWrite(trigPin, HIGH);
   delayMicroseconds(10);
-  digitalWrite(TRIG_PIN, LOW);
+  digitalWrite(trigPin, LOW);
 
   // Wait for pulse on echo pin
   t1 = micros();
-  while ( digitalRead(ECHO_PIN) == 0 ) {
+  while (digitalRead(echoPin) == 0 ) {
     t2 = micros();
     pulse_width = t2 - t1;
-    if ( pulse_width > (MAX_DIST + 1000)) {
+    if (pulse_width > (MAX_DIST + 1000)) {
       SerialCom->println("HC-SR04: NOT found");
       return;
     }
@@ -371,11 +358,11 @@ void HC_SR04_range()
   // Note: the micros() counter will overflow after ~70 min
 
   t1 = micros();
-  while ( digitalRead(ECHO_PIN) == 1)
+  while (digitalRead(ECHO_PIN) == 1)
   {
     t2 = micros();
     pulse_width = t2 - t1;
-    if ( pulse_width > (MAX_DIST + 1000) ) {
+    if (pulse_width > (MAX_DIST + 1000) ) {
       SerialCom->println("HC-SR04: Out of range");
       return;
     }
@@ -411,15 +398,7 @@ void Analog_Range_A4()//Why do we need this
 void GYRO_reading()
 {
   SerialCom->print("GYRO A3:");
-  SerialCom->println(analogRead(A3));
-}
-#endif
-
-#ifndef NO_READ_IR
-void IR_reading()
-{
-  SerialCom->print("IR Sensor Value");
-  SerialCom->println(IR_SENSOR);
+  SerialCom->println(analogRead(A7));
 }
 #endif
 
@@ -441,10 +420,10 @@ void disable_motors()
 
 void enable_motors()
 {
-  left_font_motor.attach(left_front);  // attaches the servo on pin left_front to turn Vex Motor Controller 29 On
+  left_front_motor.attach(left_front);  // attaches the servo on pin left_front to turn Vex Motor Controller 29 On
   left_rear_motor.attach(left_rear);  // attaches the servo on pin left_rear to turn Vex Motor Controller 29 On
   right_rear_motor.attach(right_rear);  // attaches the servo on pin right_rear to turn Vex Motor Controller 29 On
-  right_font_motor.attach(right_front);  // attaches the servo on pin right_front to turn Vex Motor Controller 29 On
+  right_front_motor.attach(right_front);  // attaches the servo on pin right_front to turn Vex Motor Controller 29 On
 }
 
 void orient() { // Drives robot to TL or BR corner
@@ -475,10 +454,58 @@ void turn(int angle) { // Turns robot to ensure alignment +ve = CW, -ve = CCW
 
 void stop() // Stops robot
 {
-  left_font_motor.writeMicroseconds(1500);
+  left_front_motor.writeMicroseconds(1500);
   left_rear_motor.writeMicroseconds(1500);
   right_rear_motor.writeMicroseconds(1500);
-  right_font_motor.writeMicroseconds(1500);
+  right_front_motor.writeMicroseconds(1500);
+}
+  
+void forward()
+{
+  left_front_motor.writeMicroseconds(1500 + speed_val);
+  left_rear_motor.writeMicroseconds(1500 + speed_val);
+  right_rear_motor.writeMicroseconds(1500 - speed_val);
+  right_front_motor.writeMicroseconds(1500 - speed_val);
+}
+
+void reverse ()
+{
+  left_front_motor.writeMicroseconds(1500 - speed_val);
+  left_rear_motor.writeMicroseconds(1500 - speed_val);
+  right_rear_motor.writeMicroseconds(1500 + speed_val);
+  right_front_motor.writeMicroseconds(1500 + speed_val);
+}
+
+void ccw ()
+{
+  left_front_motor.writeMicroseconds(1500 - speed_val);
+  left_rear_motor.writeMicroseconds(1500 - speed_val);
+  right_rear_motor.writeMicroseconds(1500 - speed_val);
+  right_front_motor.writeMicroseconds(1500 - speed_val);
+}
+
+void cw ()
+{
+  left_front_motor.writeMicroseconds(1500 + speed_val);
+  left_rear_motor.writeMicroseconds(1500 + speed_val);
+  right_rear_motor.writeMicroseconds(1500 + speed_val);
+  right_front_motor.writeMicroseconds(1500 + speed_val);
+}
+
+void strafe_left ()
+{
+  left_front_motor.writeMicroseconds(1500 - speed_val);
+  left_rear_motor.writeMicroseconds(1500 + speed_val);
+  right_rear_motor.writeMicroseconds(1500 + speed_val);
+  right_front_motor.writeMicroseconds(1500 - speed_val);
+}
+
+void strafe_right ()
+{
+  left_front_motor.writeMicroseconds(1500 + speed_val);
+  left_rear_motor.writeMicroseconds(1500 - speed_val);
+  right_rear_motor.writeMicroseconds(1500 - speed_val);
+  right_front_motor.writeMicroseconds(1500 + speed_val);
 }
 
 void StraightLineController(double reference_x, double reference_y, double reference_z, double Kp_x, double Ki_x, double Kp_y, double Ki_y, double Kp_z, double Ki_z){
