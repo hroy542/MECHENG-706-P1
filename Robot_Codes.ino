@@ -60,16 +60,22 @@ enum IR {
 
 // Left front long range IR
 const int IR_LONG_1 = A4;
+double IR_LONG_1_DIST = 0;
 
 // Left back long range IR
 const int IR_LONG_2 = A5;
+double IR_LONG_2_DIST = 0;
+
+double IR_diff = 0;
+double correction = 0;
 
 // Back left mid range IR
 const int IR_MID_1 = A6;
+double IR_MID_1_DIST = 0;
 
 // Back right mid range IR
 const int IR_MID_2 = A7;
-
+double IR_MID_2_DIST = 0;
 //----IR----
 
 //----IR Kalman Filter----
@@ -79,9 +85,22 @@ double process_noise = 1;
 double sensor_noise = 10;    // Change the value of sensor noise to get different KF performance
 //----IR Kalman Filter----
 
-//Gyro Pin and Variables
-const int gyro = A8;
-int gyroADC = 0;
+//----Gyro----
+#define PI 3.1415926535897932384626433832795
+const int gyroPin = A8;           //define the pin that gyro is connected  
+int T = 100;                        // T is the time of one loop, 0.1 sec  
+int gyroADC = 0;           // read out value of sensor  
+float gyroSupplyVoltage = 5;      // supply voltage for gyro 
+float gyroZeroVoltage = 0;         // the value of voltage when gyro is zero  
+float gyroSensitivity = 0.007;      // gyro sensitivity unit is (mv/degree/second) get from datasheet  
+float rotationThreshold = 1.5;      // because of gyro drifting, defining rotation angular velocity less  
+                                                       // than this value will be ignored 
+float gyroRate = 0;                      // read out value of sensor in voltage   
+float currentAngle = 0;               // current angle calculated by angular velocity integral on  
+byte serialRead = 0;
+
+double radiansAngle = 0;
+//----Gyro----
 
 // Anything over 400 cm (23200 us pulse) is "out of range". Hit:If you decrease to this the ranging sensor but the timeout is short, you may not need to read up to 4meters.
 const unsigned int MAX_DIST = 23200;
@@ -103,6 +122,8 @@ double Kp_x = 3.38;    double Ki_x = 0.154;
 double Kp_y = 1.96;    double Ki_y = 0.205;
 double Kp_z = 2.72;    double Ki_z = 0.343;
 
+double Kp_straight = 20; // gain for keeping robot straight
+
 double elapsedTime;
 double error;
 double lastError;
@@ -112,7 +133,7 @@ double cumError, rateError;
 double reference_x = 10;
 double reference_y = 0;
 double reference_z = 0;
-
+//----PIDValues----
 
 int speed_val = 100;
 int speed_change;
