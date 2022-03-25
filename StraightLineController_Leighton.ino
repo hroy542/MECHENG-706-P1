@@ -225,11 +225,11 @@ double IR_dist(IR code) { // find distances using calibration curve equations
   switch(code) {
     case LEFT_FRONT:
       adc = analogRead(IR_LONG_1);
-      dist = pow((3127.4 / adc), (25/23));
+      dist = pow((3127.4 * adc), (-0.92));
       break;
     case LEFT_BACK:
       adc = analogRead(IR_LONG_2);
-      dist = pow((3655.5 / adc), (250/221);
+      dist = pow((1790.5 * adc), (-0.829));
       break;
     case BACK_LEFT:
       adc = analogRead(IR_MID_1);
