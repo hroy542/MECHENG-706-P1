@@ -51,8 +51,7 @@ double sensor_noise = 15;
 //----Kalman----
 
 //----Gyro----
-#define PI 3.1415926535897932384626433832795
-const int sensorPin = A7;           //define the pin that gyro is connected  
+const int sensorPin = A8;           //define the pin that gyro is connected  
 int T = 100;                        // T is the time of one loop, 0.1 sec  
 int sensorValue = 0;           // read out value of sensor  
 float gyroSupplyVoltage = 5;      // supply voltage for gyro 
