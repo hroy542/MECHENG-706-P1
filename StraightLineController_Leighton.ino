@@ -146,8 +146,8 @@ void StraightLineController(double reference_x, double reference_y, double refer
   //Serial.println(FLspeed_val);
   
   left_front_motor.writeMicroseconds(1500 + FLspeed_val - correction);
-  left_rear_motor.writeMicroseconds(1500 + BLspeed_val);
-  right_rear_motor.writeMicroseconds(1500 - BRspeed_val);
+  left_rear_motor.writeMicroseconds(1500 + BLspeed_val + correction);
+  right_rear_motor.writeMicroseconds(1500 - BRspeed_val + correction);
   right_front_motor.writeMicroseconds(1500 - FRspeed_val - correction);
 }
 
