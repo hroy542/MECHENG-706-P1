@@ -62,6 +62,7 @@ double IR_LONG_2_DIST = 0;
 
 double IR_diff = 0;
 double correction = 0;
+double IR_wall_dist = 0;
 
 // Back left mid range IR
 const int IR_MID_1 = A6;
@@ -115,12 +116,14 @@ void StraightLineController(double reference_x, double reference_y, double refer
   // Get distances from left side of robot to wall
   IR_LONG_1_DIST = IR_dist(LEFT_FRONT);
   IR_LONG_2_DIST = IR_dist(LEFT_BACK);
+  
+  IR_wall_dist = 0.4 * IR_LONG_1_DIST + 0.6 * IR_LONG_2_DIST; // distance of centre of robot to wall
 
   IR_diff = IR_LONG_1_DIST - IR_LONG_2_DIST; // Difference between long range IRs
   correction = IR_diff * Kp_straight; // drift correction factor
   
   double V_x = PID_Controller(reference_x, Ultradistance, Kp_x, Ki_x);
-  double V_y = PID_Controller(reference_y, 0, Kp_y, Ki_y);
+  double V_y = PID_Controller(reference_y, IR_wall_dist, Kp_y, Ki_y);
   double V_z = PID_Controller(reference_z, 0, Kp_z, Ki_z);
 
   //Serial.println(V_x);
