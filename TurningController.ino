@@ -1,5 +1,8 @@
 //----MotorSetup----
 # include <Servo.h>   // include the library of servo motor control
+float EMA_a = 0.9;
+double EMA_S = 0;
+
 // define the control pin of each motor
 const byte left_front = 46;
 const byte left_rear = 47;
@@ -53,12 +56,12 @@ double rawdata = 0;
 
 //----Gyro----
 const int sensorPin = A8;           //define the pin that gyro is connected
-int T = 100;                        // T is the time of one loop, 0.1 sec
+int T = 50;                        // T is the time of one loop, 0.1 sec
 int sensorValue = 0;           // read out value of sensor
 float gyroSupplyVoltage = 5;      // supply voltage for gyro
 float gyroZeroVoltage = 0;         // the value of voltage when gyro is zero
-float gyroSensitivity = 0.007;      // gyro sensitivity unit is (mv/degree/second) get from datasheet
-float rotationThreshold = 1.5;      // because of gyro drifting, defining rotation angular velocity less
+float gyroSensitivity = 0.0055;     // gyro sensitivity unit is (mv/degree/second) get from datasheet
+float rotationThreshold = 3;      // because of gyro drifting, defining rotation angular velocity less
 // than this value will be ignored
 double gyroRate = 0;                      // read out value of sensor in voltage
 double currentAngle = 0;               // current angle calculated by angular velocity integral on
@@ -93,6 +96,8 @@ void setup() {
   //----Gyro----
   int i;
   float sum = 0;
+  EMA_S = analogRead(sensorPin);     //set EMA S for t=1
+  
   pinMode(sensorPin, INPUT);
 
   Serial.println("please keep the sensor still for calibration");
@@ -130,10 +135,18 @@ void TurningController(double reference_x, double reference_y, double reference_
 
   //----Gyro----
   // find rate value - the drift rate (when it is still)
-  gyroRate = ((analogRead(sensorPin) - gyroZeroVoltage) * gyroSupplyVoltage) / 1023;
+  
+  sensorValue = analogRead(sensorPin);  //read the sensor value using ADC
+  EMA_S = (EMA_a*sensorValue) + ((1-EMA_a)*EMA_S);
+//  Serial.print(EMA_S);
+//  Serial.print(",");
+//  Serial.println(analogRead(sensorPin));
+//  
+  gyroRate = ((EMA_S - gyroZeroVoltage) * gyroSupplyVoltage) / 1023;
   // read out voltage divided the gyro sensitivity to calculate the angular velocity
   // from Data Sheet, gyroSensitivity is 0.007 V/dps
 
+  
   float angularVelocity = gyroRate / gyroSensitivity;
 //  Serial.println(angularVelocity);
   // if the angular velocity is less than the threshold, ignore it
@@ -152,7 +165,7 @@ void TurningController(double reference_x, double reference_y, double reference_
     currentAngle -= 360;
   }
 
-//  Serial.println(currentAngle);
+  Serial.println(currentAngle);
   //delay(500);
   radiansAngle = currentAngle * (PI / 180);
   //Serial.print(angularVelocity);
@@ -193,10 +206,10 @@ void TurningController(double reference_x, double reference_y, double reference_
   //Serial.println(FRspeed_val);
 
   // CCW Rotation
-    left_front_motor.writeMicroseconds(1500 + FLspeed_val);
-    left_rear_motor.writeMicroseconds(1500 + BLspeed_val);
-    right_rear_motor.writeMicroseconds(1500 + BRspeed_val);
-    right_front_motor.writeMicroseconds(1500 + FRspeed_val);
+//    left_front_motor.writeMicroseconds(1500 + FLspeed_val);
+//    left_rear_motor.writeMicroseconds(1500 + BLspeed_val);
+//    right_rear_motor.writeMicroseconds(1500 + BRspeed_val);
+//    right_front_motor.writeMicroseconds(1500 + FRspeed_val);
 }
 
 double FL_InverseKinematics(double v_x, double v_y, double omega_z) {
