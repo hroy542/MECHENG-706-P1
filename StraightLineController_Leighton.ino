@@ -31,7 +31,7 @@ double lastError;
 double input, output, setPoint;
 double cumError, rateError;
 
-double reference_x = 15.0;
+double reference_x = 15;
 double reference_y = 0;
 double reference_z = 0;
 //----PIDValues----
