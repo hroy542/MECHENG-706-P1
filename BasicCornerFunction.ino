@@ -14,6 +14,14 @@ enum STATE {
   STOPPED
 };
 
+// XY driving states
+enum DIRECTION {
+  FORWARD,
+  REVERSE,
+  LEFT,
+  RIGHT,
+};
+
 //Refer to Shield Pinouts.jpg for pin locations
 
 //Default motor control pins
@@ -50,6 +58,7 @@ double IR_LONG_2_DIST = 0;
 
 double IR_diff = 0;
 double correction = 0;
+double IR_wall_dist = 0;
 
 // Back left mid range IR
 const int IR_MID_1 = A6;
@@ -132,7 +141,7 @@ double lastError;
 double input, output, setPoint;
 double cumError, rateError;
 
-double reference_x = 10;
+double reference_x = 0;
 double reference_y = 0;
 double reference_z = 0;
 //----PIDValues----
@@ -220,7 +229,7 @@ STATE running() {
     if (!is_battery_voltage_OK()) return STOPPED;
 #endif
 
-  orient();
+  find_corner();
 
   return RUNNING;
 }
@@ -425,22 +434,22 @@ void read_serial_command()
     switch (val) {
       case 'w'://Move Forward
       case 'W':
-        forward (100);
+        //forward (100);
         SerialCom->println("Forward");
         break;
       case 's'://Move Backwards
       case 'S':
-        reverse (100);
+        //reverse (100);
         SerialCom->println("Backwards");
         break;
       case 'q'://Turn Left
       case 'Q':
-        strafe_left(100);
+        //strafe_left(100);
         SerialCom->println("Strafe Left");
         break;
       case 'e'://Turn Right
       case 'E':
-        strafe_right(100);
+        //strafe_right(100);
         SerialCom->println("Strafe Right");
         break;
       case 'a'://Turn Right
@@ -498,7 +507,7 @@ void enable_motors()
 }
 
 //----WRITTEN DRIVING FUNCTIONS----
-void orient() { // Drives robot to TL or BR corner
+void find_corner() { // Drives robot to TL or BR corner
   /* 
   Implementation for robot to find TL or BR corner:
   1. If any sensors are very close to wall (i.e. < 5cm), move away from wall.
@@ -517,12 +526,29 @@ void orient() { // Drives robot to TL or BR corner
   7. If short side, reverse 5cm using ultrasonic sensor
   8. Strafe left into starting position (15cm from wall) ensuring alignment using all IRs
   */
-
-  // MAKE FUNCTIONS FOR EASIER READING
-  
-  int ultra;
-  double ir1_dist, ir2_dist, ratio, angle;
     
+  orient(); // initial orient of robot perpendicular to wall
+
+  driveXY(20,0,FORWARD);
+
+  find_side(); // determines if on long or short side
+
+  if(LONG) {
+    corner_long();
+    LONG = false;
+  }
+  else if(SHORT) {
+    corner_short();
+    SHORT = false;
+  }
+
+  // change FSM state
+  return;
+}
+
+void orient() { // initial orienting of robot perpendicular to wall using IR
+  double ir1_dist, ir2_dist, ratio;
+  
   while(!perpendicular) {
     ccw(100);
     
@@ -545,39 +571,43 @@ void orient() { // Drives robot to TL or BR corner
       }
     }
   }
-  
-  align();
 
-  StraightLineController(20.0, 0, 0, Kp_x, Ki_x, Kp_y, Ki_y, Kp_z, Ki_z); // needs to stay in loop
+  return;
+}
 
-  rotate(180);
+void find_side() { // determine whether on short or long side of rectangle
+  rotate(180); // rotate robot to see other wall
+  int ultra = ultrasonic_dist();
 
-  ultra = ultrasonic_dist();
-  if(ultra > 1600) {
+  // if ultrasonic detects > 160 cm - robot on long side
+  if(ultra > 160) {
     LONG = true;
     SHORT = false;
   }
-  else {
+  // if ultrasonic detects < 120 cm - robot on short side
+  else if(ultra < 120) {
     SHORT = true;
     LONG = false;
   }
 
-  if(LONG) {
-    rotate(-90);
-    //strafe 5 cm left (15cm away from wall)
-    align();
-    StraightLineController(185, 15, 0, Kp_x, Ki_x, Kp_y, Ki_y, Kp_z, Ki_z); // needs to stay in loop
-    align();
-    stop();
-    LONG = false;
-  }
-  else if(SHORT) {
-    StraightLineController(185, 0, 0, Kp_x, Ki_x, Kp_y, Ki_y, Kp_z, Ki_z); // needs to stay in loop
-    align();
-    // strafe left
-    align();
-  }
-  
+  return;
+}
+
+void corner_long() { // drives robot to corner if on long side
+  rotate(-90);
+  StraightLineController(185, 0, 0, REVERSE); // needs to stay in loop
+  align();
+  StraightLineController(185, 15, 0, REVERSE); // needs to stay in loop
+  align();
+  stop();
+  LONG = false;
+}
+
+void corner_short() { // drives robot to corner if on short side
+  StraightLineController(185, 0, 0, REVERSE); // needs to stay in loop
+  align();
+  // strafe left
+  align();
 }
   
 void align() { // aligns robot perpendicular to wall
@@ -585,13 +615,16 @@ void align() { // aligns robot perpendicular to wall
   double ir1_dist, ir2_dist;
   double alignment_threshold = 0.5;
 
+  // read long range IRs
   ir1_dist = IR_dist(LEFT_FRONT);
   ir2_dist = IR_dist(LEFT_BACK);
 
+  // if already aligned return
   if(abs(ir1_dist - ir2_dist) < alignment_threshold) {
     return;
   }
 
+  // determine direction of rotation for correction
   if(ir1_dist > ir2_dist) {
     ccw(80);
   }
@@ -599,18 +632,28 @@ void align() { // aligns robot perpendicular to wall
     cw(80);
   }
 
+  // update IR distances until aligned
   do {
     ir1_dist = IR_dist(LEFT_FRONT);
     ir2_dist = IR_dist(LEFT_BACK);
        
   } while(abs(ir1_dist - ir2_dist) >= alignment_threshold);
 
-  stop();
+  stop(); // stop motors
   return;
 }
 
-void driveXY() { // Drives robot straight in X or Y direction (forward/backwards) using PI control
-  StraightLineController(reference_x, reference_y, reference_z, Kp_x, Ki_x, Kp_y, Ki_y, Kp_z, Ki_z);  
+void driveXY(double x, double y, DIRECTION dir) { // Drives robot straight in X or Y direction (forward/backwards) using PI control
+  switch(dir) {
+    case FORWARD:
+      break;
+    case REVERSE:
+      break;
+    case LEFT:
+      break;
+    case RIGHT:
+      break;
+  } 
 }
 
 void rotate(int angle) { // Turns robot to ensure alignment +ve = CW, -ve = CCW
@@ -635,34 +678,19 @@ void rotate(int angle) { // Turns robot to ensure alignment +ve = CW, -ve = CCW
     rotation = gyroAngle() - starting_angle;  
   }
   
-  stop();
+  stop(); // stop robot
   
   return;
 }
 //----WRITTEN DRIVING FUNCTIONS----
 
+//----OPEN LOOP DRIVING FUNCTIONS----
 void stop() //Stop
 {
   left_front_motor.writeMicroseconds(1500);
   left_rear_motor.writeMicroseconds(1500);
   right_rear_motor.writeMicroseconds(1500);
   right_front_motor.writeMicroseconds(1500);
-}
-
-void forward(int speedval)
-{
-  left_front_motor.writeMicroseconds(1500 + speedval);
-  left_rear_motor.writeMicroseconds(1500 + speedval);
-  right_rear_motor.writeMicroseconds(1500 - speedval);
-  right_front_motor.writeMicroseconds(1500 - speedval);
-}
-
-void reverse(int speedval)
-{
-  left_front_motor.writeMicroseconds(1500 - speedval);
-  left_rear_motor.writeMicroseconds(1500 - speedval);
-  right_rear_motor.writeMicroseconds(1500 + speedval);
-  right_front_motor.writeMicroseconds(1500 + speedval);
 }
 
 void ccw(int speedval)
@@ -680,61 +708,73 @@ void cw(int speedval)
   right_rear_motor.writeMicroseconds(1500 + speedval);
   right_front_motor.writeMicroseconds(1500 + speedval);
 }
-
-void strafe_left(int speedval)
-{
-  left_front_motor.writeMicroseconds(1500 - speedval);
-  left_rear_motor.writeMicroseconds(1500 + speedval);
-  right_rear_motor.writeMicroseconds(1500 + speedval);
-  right_front_motor.writeMicroseconds(1500 - speedval);
-}
-
-void strafe_right(int speedval)
-{
-  left_front_motor.writeMicroseconds(1500 + speedval);
-  left_rear_motor.writeMicroseconds(1500 - speedval);
-  right_rear_motor.writeMicroseconds(1500 - speedval);
-  right_front_motor.writeMicroseconds(1500 + speedval);
-}
+//----OPEN LOOP DRIVING FUNCTIONS----
 
 
 //----WRITTEN HELPER FUNCTIONS----
-void StraightLineController(double reference_x, double reference_y, double reference_z, double Kp_x, double Ki_x, double Kp_y, double Ki_y, double Kp_z, double Ki_z){
+void StraightLineController(double reference_x, double reference_y, double reference_z, DIRECTION dir){
   Ultradistance = ultrasonic_dist(); // Get distance from front of robot to wall
 
   // Get distances from left side of robot to wall
   IR_LONG_1_DIST = IR_dist(LEFT_FRONT);
   IR_LONG_2_DIST = IR_dist(LEFT_BACK);
 
+  IR_wall_dist = 0.4 * IR_LONG_1_DIST + 0.6 * IR_LONG_2_DIST;
+
   IR_diff = IR_LONG_1_DIST - IR_LONG_2_DIST; // Difference between long range IRs
   correction = IR_diff * Kp_straight; // drift correction factor
   
   double V_x = PID_Controller(reference_x, Ultradistance, Kp_x, Ki_x);
-  double V_y = PID_Controller(reference_y, 0, Kp_y, Ki_y);
+  double V_y = PID_Controller(reference_y, IR_wall_dist, Kp_y, Ki_y);
   double V_z = PID_Controller(reference_z, 0, Kp_z, Ki_z);
 
   //Serial.println(V_x);
   
-  FL_Ang_Vel = FL_InverseKinematics(V_x, V_y,  V_z);
-  FR_Ang_Vel = FR_InverseKinematics( V_x, V_y, V_z);
-  BL_Ang_Vel = BL_InverseKinematics( V_x,  V_y,  V_z);
-  BR_Ang_Vel = BR_InverseKinematics( V_x, V_y,  V_z); 
+  FL_Ang_Vel = FL_InverseKinematics(V_x, V_y, V_z);
+  FR_Ang_Vel = FR_InverseKinematics(V_x, V_y, V_z);
+  BL_Ang_Vel = BL_InverseKinematics(V_x, V_y, V_z);
+  BR_Ang_Vel = BR_InverseKinematics(V_x, V_y, V_z); 
 
   //Serial.println(FL_Ang_Vel);
 
   //Serial.print(FL_Ang_Vel);
   
   double FLspeed_val = WriteMicroseconds(FL_Ang_Vel/10);
+  constrain(FLspeed_val, 0, 450);
   double BLspeed_val = WriteMicroseconds(BL_Ang_Vel/10);
-  double BRpeed_val = WriteMicroseconds(BR_Ang_Vel/10);
+  constrain(BLspeed_val, 0, 450);
+  double BRspeed_val = WriteMicroseconds(BR_Ang_Vel/10);
+  constrain(BRspeed_val, 0, 450);
   double FRspeed_val = WriteMicroseconds(FR_Ang_Vel/10);
+  constrain(FRspeed_val, 0, 450);
 
   //Serial.println(FLspeed_val);
-  
-  left_front_motor.writeMicroseconds(1500 + FLspeed_val - correction);
-  left_rear_motor.writeMicroseconds(1500 + BLspeed_val + correction);
-  right_rear_motor.writeMicroseconds(1500 - BRspeed_val + correction);
-  right_front_motor.writeMicroseconds(1500 - FRspeed_val - correction);
+  switch(dir) {
+    case FORWARD:
+      left_front_motor.writeMicroseconds(1500 + FLspeed_val - correction);
+      left_rear_motor.writeMicroseconds(1500 + BLspeed_val - correction);
+      right_rear_motor.writeMicroseconds(1500 - BRspeed_val - correction);
+      right_front_motor.writeMicroseconds(1500 - FRspeed_val - correction);
+      break;
+    case REVERSE:
+      left_front_motor.writeMicroseconds(1500 - FLspeed_val - correction);
+      left_rear_motor.writeMicroseconds(1500 - BLspeed_val - correction);
+      right_rear_motor.writeMicroseconds(1500 + BRspeed_val - correction);
+      right_front_motor.writeMicroseconds(1500 + FRspeed_val - correction);
+      break;
+    case LEFT:
+      left_front_motor.writeMicroseconds(1500 - FLspeed_val - correction);
+      left_rear_motor.writeMicroseconds(1500 + BLspeed_val - correction);
+      right_rear_motor.writeMicroseconds(1500 + BRspeed_val - correction);
+      right_front_motor.writeMicroseconds(1500 - FRspeed_val - correction);
+      break;
+    case RIGHT:
+      left_front_motor.writeMicroseconds(1500 + FLspeed_val - correction);
+      left_rear_motor.writeMicroseconds(1500 - BLspeed_val - correction);
+      right_rear_motor.writeMicroseconds(1500 - BRspeed_val - correction);
+      right_front_motor.writeMicroseconds(1500 + FRspeed_val - correction);
+      break;
+  }
 }
   
 double FL_InverseKinematics(double v_x, double v_y, double omega_z){
