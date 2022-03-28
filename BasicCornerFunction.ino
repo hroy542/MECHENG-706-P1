@@ -646,12 +646,24 @@ void align() { // aligns robot perpendicular to wall
 void driveXY(double x, double y, DIRECTION dir) { // Drives robot straight in X or Y direction (forward/backwards) using PI control
   switch(dir) {
     case FORWARD:
+      while(DRIVING) {
+        StraightLineController(x, y, 0, FORWARD);
+      }
       break;
     case REVERSE:
+      while(DRIVING) {
+        StraightLineController(x, y, 0, REVERSE);
+      }
       break;
     case LEFT:
+      while(DRIVING) {
+        StraightLineController(x, y, 0, LEFT);
+      }
       break;
     case RIGHT:
+      while(DRIVING) {
+        StraightLineController(x, y, 0, RIGHT);
+      }
       break;
   } 
 }
