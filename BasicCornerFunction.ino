@@ -102,6 +102,7 @@ double radiansAngle = 0;
 bool perpendicular = false;
 bool LONG = false;
 bool SHORT = false;
+bool DRIVING = false;
 //----Go to Corner Variables----
 
 // Anything over 400 cm (23200 us pulse) is "out of range". Hit:If you decrease to this the ranging sensor but the timeout is short, you may not need to read up to 4meters.
