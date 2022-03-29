@@ -25,14 +25,14 @@ double last_var4 = 9999;
 double last_var5 = 9999;
 double last_var6 = 9999;
 double last_var7 = 9999;
-double process_noise4 = .05;
-double process_noise5 = 2;
-double process_noise6 = 2;
-double process_noise7 = 2;
+double process_noise4 = 1;
+double process_noise5 = 1;
+double process_noise6 = 1;
+double process_noise7 = 1;
 double sensor_noise4 = 25;
-double sensor_noise5 = 7;
-double sensor_noise6 = 7;
-double sensor_noise7 = 7;// Change the value of sensor noise to get different KF performance
+double sensor_noise5 = 25;
+double sensor_noise6 = 25;
+double sensor_noise7 = 25;// Change the value of sensor noise to get different KF performance
 //----Kalman Filter----
 
 
@@ -47,15 +47,16 @@ Serial.begin(115200); // start serial communication
 void loop() {
   // put your main code here, to run repeatedly:
   
-  Serial.println("Please enter the mode you want to run: Callibration Mode [1], Battery Test [2] or Enter the Sensor pin for the Sensor you want to tune [4 - 7]?:");
+  Serial.println("Please enter the mode you want to run: Callibration Mode [1], Battery Raw [2], Battery Percentage [3] or Enter the Sensor pin for the Sensor you want to tune [4 - 7]?:");
   
   while (Serial.available() ==0){
   }
   int Mode = Serial.parseInt();
 
   switch (Mode){
+    //USE MODE 1 FOR CALLIBRATION, PRINTS OUT THE RAW ADC INPUTS
     case 1:
-      while(Serial.available() !=0){
+      while(1){
         Analogue4 = analogRead(LEFT_FRONT_LIR); // the read out is a signal from 0-1023 corresponding to 0-5v
         Analogue5 = analogRead(LEFT_BACK_LIR);
         Analogue6 = analogRead(LEFT_BACK_MIR);
@@ -76,33 +77,48 @@ void loop() {
         delay(500);
       }
     break;
-    case 2 ... 3:
-    while(Serial.available() !=0){
+
+    //USE MODE 2 TO PRINT OUT THE RAW LIPO ADC VALUE    
+    case 2:
+    while(1){
       raw_lipo=analogRead(A0);
       Serial.println(raw_lipo);
       Lipo_level_cal = (raw_lipo - 717);
       Lipo_level_cal = Lipo_level_cal * 100;
       Lipo_level_cal = Lipo_level_cal / 143;
-//      Serial.print("Lipo Level: ");
-//      Serial.print(Lipo_level_cal);
-//      Serial.println("%");
       delay(400);
     }
     break;
+
+    //USE MODE 3 TO PRINT OUT THE BATTERY PERCENTAGE LEVEL
+    case 3:
+    while(1){
+      raw_lipo=analogRead(A0);
+      Lipo_level_cal = (raw_lipo - 717);
+      Lipo_level_cal = Lipo_level_cal * 100;
+      Lipo_level_cal = Lipo_level_cal / 143;
+      Serial.print("Lipo Level: ");
+      Serial.print(Lipo_level_cal);
+      Serial.println("%");
+      delay(400);
+    }
+    break;
+
+    //USE MODE 4 TO PRINT OUT THE RAW AND FILTERED READINGS FOR THE FRONT LEFT LIR SENSOR
     case 4:
       while(1){
         Analogue4 = analogRead(LEFT_FRONT_LIR); // the read out is a signal from 0-1023 corresponding to 0-5v
         temp = Distance(4, Analogue4);
         Serial.print(temp);
         Serial.print(",");
-//        Serial.println(last_var4);
         distance4 = Kalman(temp, Distance4_Past, process_noise4, sensor_noise4, last_var4, 4);
-//        Serial.println(last_var4);
         Serial.println(distance4);
         Distance4_Past = distance4;
         delay(25);
       }
     break;
+
+    //USE MODE 5 TO PRINT OUT THE RAW AND FILTERED READINGS FOR THE BACK LEFT LIR SENSOR
     case 5:
       while(1){
         Analogue5 = analogRead(LEFT_BACK_LIR); // the read out is a signal from 0-1023 corresponding to 0-5v
@@ -112,10 +128,11 @@ void loop() {
         distance5 = Kalman(temp, Distance5_Past, process_noise5, sensor_noise5, last_var5, 5);
         Serial.println(distance5);
         Distance5_Past = distance5;
-        delay(100);
-
+        delay(25);
       }
     break;
+
+    //USE MODE 6 TO PRINT OUT THE RAW AND FILTERED READINGS FOR THE BACK LEFT MIR SENSOR
     case 6:
       while(1){
         Analogue6 = analogRead(LEFT_BACK_MIR); // the read out is a signal from 0-1023 corresponding to 0-5v
@@ -125,10 +142,12 @@ void loop() {
         distance6 = Kalman(temp, Distance6_Past, process_noise6, sensor_noise6, last_var6, 6);
         Serial.println(distance6);
         Distance6_Past = distance6;
-        delay(100);
+        delay(25);
 
       }
     break;
+
+    //USE MODE 7 TO PRINT OUT THE RAW AND FILTERED READINGS FOR THE BACK RIGHT MIR SENSOR
     case 7:
       while(1){
         Analogue7 = analogRead(RIGHT_BACK_MIR); // the read out is a signal from 0-1023 corresponding to 0-5v
@@ -138,7 +157,49 @@ void loop() {
         distance7 = Kalman(temp, Distance7_Past, process_noise7, sensor_noise7, last_var7 ,7);
         Serial.println(distance7);
         Distance7_Past = distance7;
-        delay(100);
+        delay(25);
+      }
+    break;
+
+    //USE MODE 8 TO PRINT BOTH LONG RANGE IR FILTERED VALUES AT ONCE
+    case 8:
+      while(1){
+        Analogue4 = analogRead(LEFT_FRONT_LIR); // the read out is a signal from 0-1023 corresponding to 0-5v
+        Analogue5 = analogRead(LEFT_BACK_LIR); // the read out is a signal from 0-1023 corresponding to 0-5v
+
+        temp = Distance(4, Analogue4);
+        distance4 = Kalman(temp, Distance4_Past, process_noise4, sensor_noise4, last_var4, 4);
+        Distance4_Past = distance4;
+
+        Serial.print(distance4);
+        Serial.print(",");
+
+        temp = Distance(5, Analogue5);
+        distance5 = Kalman(temp, Distance5_Past, process_noise5, sensor_noise5, last_var5, 5);
+        Serial.println(distance5);
+        Distance5_Past = distance5;
+        delay(25);
+      }
+    break;
+
+    //USE MODE 8 TO PRINT BOTH LONG RANGE IR FILTERED VALUES AT ONCE
+    case 9:
+      while(1){
+        Analogue6 = analogRead(LEFT_BACK_MIR); // the read out is a signal from 0-1023 corresponding to 0-5v
+        Analogue7 = analogRead(RIGHT_BACK_MIR); // the read out is a signal from 0-1023 corresponding to 0-5v
+
+        temp = Distance(6, Analogue6);
+        distance6 = Kalman(temp, Distance6_Past, process_noise6, sensor_noise6, last_var6, 6);
+        Distance6_Past = distance6;
+
+        Serial.print(distance6);
+        Serial.print(",");
+
+        temp = Distance(7, Analogue7);
+        distance7 = Kalman(temp, Distance7_Past, process_noise7, sensor_noise7, last_var7, 7);
+        Serial.println(distance7);
+        Distance7_Past = distance7;
+        delay(25);
       }
     break;
   }
