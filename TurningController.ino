@@ -24,7 +24,7 @@ double R_w = 2.54;
 //----PIDValues----
 double Kp_x = 3.38;    double Ki_x = 0.154;
 double Kp_y = 1.96;    double Ki_y = 0.205;
-double Kp_z = 2.72;    double Ki_z = 0.343;
+double Kp_z = 2.4;    double Ki_z = 0.343;
 
 double elapsedTime;
 double error;
@@ -34,7 +34,7 @@ double cumError, rateError;
 
 double reference_x = 0;
 double reference_y = 0;
-double reference_z = PI / 4;
+double reference_z = PI/2;
 //----PIDValues----
 
 
@@ -56,7 +56,7 @@ double rawdata = 0;
 
 //----Gyro----
 const int sensorPin = A8;           //define the pin that gyro is connected
-int T = 50;                        // T is the time of one loop, 0.1 sec
+int T = 100;                        // T is the time of one loop, 0.1 sec
 int sensorValue = 0;           // read out value of sensor
 float gyroSupplyVoltage = 5;      // supply voltage for gyro
 float gyroZeroVoltage = 0;         // the value of voltage when gyro is zero
@@ -165,7 +165,7 @@ void TurningController(double reference_x, double reference_y, double reference_
     currentAngle -= 360;
   }
 
-  Serial.println(currentAngle);
+  //Serial.println(currentAngle);
   //delay(500);
   radiansAngle = currentAngle * (PI / 180);
   //Serial.print(angularVelocity);
@@ -206,10 +206,10 @@ void TurningController(double reference_x, double reference_y, double reference_
   //Serial.println(FRspeed_val);
 
   // CCW Rotation
-//    left_front_motor.writeMicroseconds(1500 + FLspeed_val);
-//    left_rear_motor.writeMicroseconds(1500 + BLspeed_val);
-//    right_rear_motor.writeMicroseconds(1500 + BRspeed_val);
-//    right_front_motor.writeMicroseconds(1500 + FRspeed_val);
+    left_front_motor.writeMicroseconds(1500 + FRspeed_val);
+    left_rear_motor.writeMicroseconds(1500 + BRspeed_val);
+    right_rear_motor.writeMicroseconds(1500 + BRspeed_val);
+    right_front_motor.writeMicroseconds(1500 + FRspeed_val);
 }
 
 double FL_InverseKinematics(double v_x, double v_y, double omega_z) {
@@ -246,7 +246,7 @@ double PID_Controller (double reference, double current, double Kp, double Ki) {
 
   error = reference - current;
   //error = PI/2;
-  //Serial.println(error);
+  Serial.println(error);
   //delay(1000);
   //Serial.println(error);
   cumError += error * elapsedTime;
