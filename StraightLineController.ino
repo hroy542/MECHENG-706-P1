@@ -29,7 +29,7 @@ double lastError;
 double input, output, setPoint;
 double cumError, rateError;
 
-double reference_x = 10;
+double reference_x = 50;
 double reference_y = 0;
 double reference_z = 0;
 //----PIDValues----
@@ -105,21 +105,21 @@ void StraightLineController(double reference_x, double reference_y, double refer
 
   //Serial.print(FL_Ang_Vel);
   
-  double FLspeed_val = WriteMicroseconds(FL_Ang_Vel/10);
-  contrain(FLspeed_val, 0, 500);
-  double BLspeed_val = WriteMicroseconds(BL_Ang_Vel/10);
-  contrain(BLspeed_val, 0, 500);
-  double BRpeed_val = WriteMicroseconds(BR_Ang_Vel/10);
-  contrain(BRspeed_val, 0, 500);
-  double FRspeed_val = WriteMicroseconds(FR_Ang_Vel/10);
-  contrain(FRspeed_val, 0, 500);
+  double FLspeed_val = WriteMicroseconds(FL_Ang_Vel/100);
+  constrain(FLspeed_val, 0, 500);
+  double BLspeed_val = WriteMicroseconds(BL_Ang_Vel/100);
+  constrain(BLspeed_val, 0, 500);
+  double BRpeed_val = WriteMicroseconds(BR_Ang_Vel/100);
+  constrain(BRspeed_val, 0, 500);
+  double FRspeed_val = WriteMicroseconds(FR_Ang_Vel/100);
+  constrain(FRspeed_val, 0, 500);
 
   //Serial.println(FLspeed_val);
   
-  left_front_motor.writeMicroseconds(1500 + FLspeed_val);
-  left_rear_motor.writeMicroseconds(1500 + BLspeed_val);
-  right_rear_motor.writeMicroseconds(1500 - BRspeed_val);
-  right_front_motor.writeMicroseconds(1500 - FRspeed_val);
+  left_front_motor.writeMicroseconds(1500 - FLspeed_val);
+  left_rear_motor.writeMicroseconds(1500 - BLspeed_val);
+  right_rear_motor.writeMicroseconds(1500 + FRspeed_val);
+  right_front_motor.writeMicroseconds(1500 + FRspeed_val);
 }
 
 double FL_InverseKinematics(double v_x, double v_y, double omega_z){
@@ -159,7 +159,7 @@ double PID_Controller (double reference, double current, double Kp, double Ki){
    cumError += error * elapsedTime;                
    rateError = (error - lastError)/elapsedTime;   
  
-   double out = (-1)*(Kp*error + Ki*cumError);                          
+   double out = (Kp*error + Ki*cumError);                          
  
    lastError = error;                               
    previousTime = currentTime;                       
