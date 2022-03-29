@@ -616,7 +616,7 @@ void corner_long() { // drives robot to corner if on long side
 }
 
 void corner_short() { // drives robot to corner if on short side
-  driveXY(185, 0, 0, REVERSE); // needs to stay in loop
+  driveXY(185, -1, 0, REVERSE); // needs to stay in loop
   align();
   
   driveXY(185, 15, 0, LEFT);
@@ -657,7 +657,6 @@ void align() { // aligns robot perpendicular to wall
 }
 
 void driveXY(double x, double y, DIRECTION dir) { // Drives robot straight in X or Y direction (forward/backwards) using PI control
-  
   switch(dir) {
     case FORWARD:
       while(DRIVING) {
@@ -738,14 +737,20 @@ void cw(int speedval)
 
 
 //----WRITTEN HELPER FUNCTIONS----
-void StraightLineController(double reference_x, double reference_y, double reference_z, DIRECTION dir){
+void StraightLineController(double reference_x, double reference_y, double reference_z, DIRECTION dir)
   Ultradistance = ultrasonic_dist(); // Get distance from front of robot to wall
 
   // Get distances from left side of robot to wall
   IR_LONG_1_DIST = IR_dist(LEFT_FRONT);
   IR_LONG_2_DIST = IR_dist(LEFT_BACK);
 
-  IR_wall_dist = 0.3 * IR_LONG_1_DIST + 0.7 * IR_LONG_2_DIST;
+  IR_long_dist = 0.3 * IR_LONG_1_DIST + 0.7 * IR_LONG_2_DIST;
+
+  // if input for y is 0, ignore keeping 
+  if(reference_y == -1) {
+    reference_y = 0;
+    IR_long_dist = 0;
+  }
 
   IR_diff = IR_LONG_1_DIST - IR_LONG_2_DIST; // Difference between long range IRs
   correction = IR_diff * Kp_straight; // drift correction factor
