@@ -56,9 +56,9 @@ double IR_LONG_1_DIST = 0;
 const int IR_LONG_2 = A5;
 double IR_LONG_2_DIST = 0;
 
-double IR_diff = 0;
+double IR_long_diff = 0;
 double correction = 0;
-double IR_wall_dist = 0;
+double IR_long_dist = 0;
 
 // Back left mid range IR
 const int IR_MID_1 = A6;
@@ -67,6 +67,9 @@ double IR_MID_1_DIST = 0;
 // Back right mid range IR
 const int IR_MID_2 = A7;
 double IR_MID_2_DIST = 0;
+
+double IR_mid_diff = 0;
+double IR_mid_dist = 0;
 //----IR----
 
 //----IR Kalman Filter----
@@ -528,8 +531,10 @@ void find_corner() { // Drives robot to TL or BR corner
   */
     
   orient(); // initial orient of robot perpendicular to wall
+  
+  double IR_long_dist = 0.7 * IR_dist(LEFT_FRONT) + 0.3 * IR_dist(LEFT_BACK);
 
-  driveXY(20,0,FORWARD);
+  driveXY(20, IR_long_dist, FORWARD);
 
   find_side(); // determines if on long or short side
 
@@ -594,19 +599,26 @@ void find_side() { // determine whether on short or long side of rectangle
 }
 
 void corner_long() { // drives robot to corner if on long side
+  double ultra_dist;
+  
   rotate(-90);
-  StraightLineController(185, 0, 0, REVERSE); // needs to stay in loop
   align();
-  StraightLineController(185, 15, 0, REVERSE); // needs to stay in loop
+  
+  ultra_dist = ultrasonic_dist();
+  driveXY(ultra_dist, 15, 0, LEFT); // needs to stay in loop
+  
+  driveXY(185, 15, 0, REVERSE); // needs to stay in loop
   align();
+  
   stop();
   LONG = false;
 }
 
 void corner_short() { // drives robot to corner if on short side
-  StraightLineController(185, 0, 0, REVERSE); // needs to stay in loop
+  driveXY(185, 0, 0, REVERSE); // needs to stay in loop
   align();
-  // strafe left
+  
+  driveXY(185, 15, 0, LEFT);
   align();
 }
   
@@ -644,6 +656,7 @@ void align() { // aligns robot perpendicular to wall
 }
 
 void driveXY(double x, double y, DIRECTION dir) { // Drives robot straight in X or Y direction (forward/backwards) using PI control
+  
   switch(dir) {
     case FORWARD:
       while(DRIVING) {
@@ -731,12 +744,21 @@ void StraightLineController(double reference_x, double reference_y, double refer
   IR_LONG_1_DIST = IR_dist(LEFT_FRONT);
   IR_LONG_2_DIST = IR_dist(LEFT_BACK);
 
-  IR_wall_dist = 0.4 * IR_LONG_1_DIST + 0.6 * IR_LONG_2_DIST;
+  IR_wall_dist = 0.3 * IR_LONG_1_DIST + 0.7 * IR_LONG_2_DIST;
 
   IR_diff = IR_LONG_1_DIST - IR_LONG_2_DIST; // Difference between long range IRs
   correction = IR_diff * Kp_straight; // drift correction factor
   
-  double V_x = PID_Controller(reference_x, Ultradistance, Kp_x, Ki_x);
+  if(reference_x == 185) {
+    IR_MID_1_DIST = IR_dist(BACK_LEFT);
+    IR_MID_2_DIST = IR_dist(BACK_RIGHT);
+    IR_mid_dist = (IR_MID_1_DIST + IR_MID_2_DIST) / 2
+      
+    double V_x = PID_Controller(15, IR_mid_dist, Kp_x, Ki_x);
+  }
+  else {
+    double V_x = PID_Controller(reference_x, Ultradistance, Kp_x, Ki_x);
+  }
   double V_y = PID_Controller(reference_y, IR_wall_dist, Kp_y, Ki_y);
   double V_z = PID_Controller(reference_z, 0, Kp_z, Ki_z);
 
