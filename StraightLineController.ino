@@ -29,7 +29,7 @@ double lastError;
 double input, output, setPoint;
 double cumError, rateError;
 
-double reference_x = 50;
+double reference_x = 15;
 double reference_y = 0;
 double reference_z = 0;
 //----PIDValues----
@@ -42,6 +42,45 @@ const int echoPin = 35;
 long Ultraduration;
 int Ultradistance;
 //----Ultrasound----
+
+//----IR----
+
+double Kp_straight = 100; // gain for keeping robot straight
+
+enum IR {
+  LEFT_FRONT,
+  LEFT_BACK,
+  BACK_LEFT,
+  BACK_RIGHT,
+};
+
+// Left front long range IR
+const int IR_LONG_1 = A4;
+double IR_LONG_1_DIST = 0;
+
+// Left back long range IR
+const int IR_LONG_2 = A5;
+double IR_LONG_2_DIST = 0;
+
+double IR_diff = 0;
+double correction = 0;
+double IR_wall_dist = 0;
+
+// Back left mid range IR
+const int IR_MID_1 = A6;
+double IR_MID_1_DIST = 0;
+
+// Back right mid range IR
+const int IR_MID_2 = A7;
+double IR_MID_2_DIST = 0;
+//----IR----
+
+//----IR Kalman Filter----
+double last_est = 0;
+double last_var = 999;
+double process_noise = 1;
+double sensor_noise = 5;    // Change the value of sensor noise to get different KF performance
+//----IR Kalman Filter----
 
 //----InverseKinematics----
 double FL_Ang_Vel = 0;
@@ -89,6 +128,17 @@ void StraightLineController(double reference_x, double reference_y, double refer
   //Serial.print("Distance: ");
   //Serial.println(Ultradistance);
 //----Ultrasound----
+
+  // Get distances from left side of robot to wall
+  IR_LONG_1_DIST = IR_dist(LEFT_FRONT);
+  IR_LONG_2_DIST = IR_dist(LEFT_BACK);
+  
+  IR_wall_dist = 0.3 * IR_LONG_1_DIST + 0.7 * IR_LONG_2_DIST; // distance of centre of robot to wall
+
+  IR_diff = IR_LONG_1_DIST - IR_LONG_2_DIST; // Difference between long range IRs
+  correction = IR_diff * Kp_straight; // drift correction factor
+  
+  //Serial.println(correction);
   
   double V_x = PID_Controller(reference_x, Ultradistance, Kp_x, Ki_x);
   double V_y = PID_Controller(reference_y, 0, Kp_y, Ki_y);
@@ -114,12 +164,12 @@ void StraightLineController(double reference_x, double reference_y, double refer
   double FRspeed_val = WriteMicroseconds(FR_Ang_Vel/100);
   constrain(FRspeed_val, 0, 500);
 
-  //Serial.println(FLspeed_val);
+  //Serial.println(FLspeed_val-correction);
   
-  left_front_motor.writeMicroseconds(1500 - FLspeed_val);
-  left_rear_motor.writeMicroseconds(1500 - BLspeed_val);
-  right_rear_motor.writeMicroseconds(1500 + FRspeed_val);
-  right_front_motor.writeMicroseconds(1500 + FRspeed_val);
+  left_front_motor.writeMicroseconds(1500- correction);
+  left_rear_motor.writeMicroseconds(1500 - correction);
+  right_rear_motor.writeMicroseconds(1500 - correction);
+  right_front_motor.writeMicroseconds(1500 - correction);
 }
 
 double FL_InverseKinematics(double v_x, double v_y, double omega_z){
@@ -170,4 +220,54 @@ double PID_Controller (double reference, double current, double Kp, double Ki){
 double WriteMicroseconds (double AngVel){
   int Microseconds = 430 - sqrt(160149 - (10000*AngVel));
   return Microseconds;
+}
+
+double IR_dist(IR code) { // find distances using calibration curve equations
+  double est, dist;
+  int adc;
+  
+  switch(code) {
+    case LEFT_FRONT:
+      adc = analogRead(IR_LONG_1);
+      //Serial.println(adc);
+      dist = (21454.2)/(2*pow(adc,1.13));
+      //dist = (21454.2)/(2*(adc^1.13))
+      //Serial.println(dist);
+      break;
+    case LEFT_BACK:
+      adc = analogRead(IR_LONG_2);
+      dist = (21454.2)/(2*pow(adc,1.13));
+      //dist = pow((1790.5 * adc), (-0.829));
+      break;
+    case BACK_LEFT:
+      adc = analogRead(IR_MID_1);
+      //dist =
+      break;
+    case BACK_RIGHT:
+      adc = analogRead(IR_MID_2);
+      //dist = 
+      break;
+  }
+      
+  est = Kalman(dist, last_est);
+  last_est = est;  
+      
+  // might need delay dunno
+  delay(1);
+      
+  return est;
+}
+
+// Kalman Filter for IR sensors
+double Kalman(double rawdata, double prev_est) {   // Kalman Filter
+  double a_priori_est, a_post_est, a_priori_var, a_post_var, kalman_gain;
+
+  a_priori_est = prev_est;  
+  a_priori_var = last_var + process_noise; 
+
+  kalman_gain = a_priori_var/(a_priori_var+sensor_noise);
+  a_post_est = a_priori_est + kalman_gain*(rawdata-a_priori_est);
+  a_post_var = (1- kalman_gain)*a_priori_var;
+  last_var = a_post_var;
+  return a_post_est;
 }
