@@ -36,7 +36,7 @@ const int trigPin = 34;
 const int echoPin = 35;
 
 int Ultradistance;
-const double ultra_centre_offset = 11.5;
+const double ultra_centre_offset = 10.5;
 //----Ultrasound----
 
 
@@ -71,7 +71,7 @@ double IR_MID_2_DIST = 0;
 
 double IR_mid_diff = 0;
 double IR_mid_dist = 0;
-const double mid_centre_offset = 4.5;
+const double mid_centre_offset = 7.0;
 //----IR----
 
 //----IR Kalman Filter----
@@ -91,7 +91,8 @@ float gyroSensitivity = 0.007;      // gyro sensitivity unit is (mv/degree/secon
 float rotationThreshold = 1.5;      // because of gyro drifting, defining rotation angular velocity less  
 float angularVelocity = 0;
                                                        // than this value will be ignored 
-int timeElapsed, prevTime;
+int timeElapsed = 0;
+int prevTime = 0;
 float gyroRate = 0;                      // read out value of sensor in voltage   
 float angleChange = 0;
 float currentAngle = 0;               // current angle calculated by angular velocity integral on  
@@ -401,7 +402,7 @@ void HC_SR04_range()
   // Calculate distance in centimeters and inches. The constants
   // are found in the datasheet, and calculated from the assumed speed
   //of sound in air at sea level (~340 m/s).
-  cm = 11.5 + pulse_width / 58.0;
+  cm = 10.5 + pulse_width / 58.0;
 
   // Print out results
   if ( pulse_width > MAX_DIST ) {
@@ -534,48 +535,55 @@ void find_corner() { // Drives robot to TL or BR corner
   8. Strafe left into starting position (15cm from wall) ensuring alignment using all IRs
   */
     
-  orient(); // initial orient of robot perpendicular to wall
-  
-  double IR_long_dist = 0.7 * IR_dist(LEFT_FRONT) + 0.3 * IR_dist(LEFT_BACK);
+//  orient(); // initial orient of robot perpendicular to wall
+//  
+//  double IR_long_dist = 0.7 * IR_dist(LEFT_FRONT) + 0.3 * IR_dist(LEFT_BACK);
+//
+//  driveXY(20, IR_long_dist, FORWARD);
+//
+//  find_side(); // determines if on long or short side
+//
+//  if(LONG) {
+//    corner_long();
+//    LONG = false;
+//  }
+//  else if(SHORT) {
+//    corner_short();
+//    SHORT = false;
+//  }
 
-  driveXY(20, IR_long_dist, FORWARD);
+  align();
+  disable_motors();
 
-  find_side(); // determines if on long or short side
-
-  if(LONG) {
-    corner_long();
-    LONG = false;
-  }
-  else if(SHORT) {
-    corner_short();
-    SHORT = false;
-  }
-
-  // change FSM state
-  return;
+  // change FSM state - in full code
 }
 
 void orient() { // initial orienting of robot perpendicular to wall using IR
   double ir1_dist, ir2_dist, ratio;
   
+  // while robot is not perpendicular to wall
   while(!perpendicular) {
-    ccw(100);
+    ccw(100); // rotate CCW
     
+    // get distances for both IRs
     ir1_dist = IR_dist(LEFT_FRONT);
     ir2_dist = IR_dist(LEFT_BACK);
-
-    if(ir1_dist < 600 && ir2_dist < 600) {
+    
+    // if both IRs are within 60cm
+    if(ir1_dist < 60 && ir2_dist < 60) {
       
+      // calculate ratio between IR distances
       if(ir1_dist < ir2_dist) {
         ratio = ir1_dist / ir2_dist;
       }
       else {
         ratio = ir2_dist / ir1_dist;
       }
-
-      if(ratio > 0.95) {
+      
+      // if ratio is ~1 (i.e. nearly perpendicular) stop
+      if(ratio >= 0.95) {
         stop();
-        align();
+        align(); // align to ensure fully perpendicular
         perpendicular = true; 
       }
     }
@@ -585,7 +593,7 @@ void orient() { // initial orienting of robot perpendicular to wall using IR
 }
 
 void find_side() { // determine whether on short or long side of rectangle
-  rotate(180); // rotate robot to see other wall
+  rotate(175); // rotate robot to see other wall
   int ultra = ultrasonic_dist();
 
   // if ultrasonic detects > 160 cm - robot on long side
@@ -593,8 +601,8 @@ void find_side() { // determine whether on short or long side of rectangle
     LONG = true;
     SHORT = false;
   }
-  // if ultrasonic detects < 120 cm - robot on short side
-  else if(ultra < 120) {
+  // if ultrasonic detects < 130 cm - robot on short side
+  else if(ultra < 130) {
     SHORT = true;
     LONG = false;
   }
@@ -603,15 +611,14 @@ void find_side() { // determine whether on short or long side of rectangle
 }
 
 void corner_long() { // drives robot to corner if on long side
-  double ultra_dist;
+  int ultra_dist;
   
-  rotate(-90);
-  align();
+  rotate(-90); // rotate 90 degrees CCW
   
-  ultra_dist = ultrasonic_dist();
-  driveXY(ultra_dist, 15, 0, LEFT); 
+  ultra_dist = ultrasonic_dist(); // read distance from wall
+  driveXY(ultra_dist, 15, LEFT); // strafe left until 15cm from wall
   
-  driveXY(185, 15, 0, REVERSE); 
+  driveXY(185, 15, REVERSE); // reverse until 15cm from wall (starting position)
   align();
   
   stop();
@@ -619,24 +626,24 @@ void corner_long() { // drives robot to corner if on long side
 }
 
 void corner_short() { // drives robot to corner if on short side
-  driveXY(185, 0, 0, REVERSE);
+  driveXY(185, 0, REVERSE); // reverse until 15cm from wall
   align();
   
-  driveXY(185, 15, 0, LEFT);
+  driveXY(185, 15, LEFT); // strafe left into starting position
   align();
 }
   
 void align() { // aligns robot perpendicular to wall
   // basic - might need PID control to ensure accuracy
   double ir1_dist, ir2_dist;
-  double alignment_threshold = 0.5;
+  double alignment_threshold = 0.1;
 
   // read long range IRs
   ir1_dist = IR_dist(LEFT_FRONT);
   ir2_dist = IR_dist(LEFT_BACK);
 
   // if already aligned return
-  if(abs(ir1_dist - ir2_dist) < alignment_threshold) {
+  if(abs(ir1_dist - ir2_dist) <= alignment_threshold) {
     return;
   }
 
@@ -688,26 +695,25 @@ void driveXY(double x, double y, DIRECTION dir) { // Drives robot straight in X 
 
 void rotate(int angle) { // Turns robot to ensure alignment +ve = CW, -ve = CCW - WILL LIKELY REPLACE WITH TURNING CONTROLLER
   double rotation = 0; 
-  double starting_angle;
+  double starting_angle = 0;
   currentAngle = 0;
-
-  // determine direction of rotation from input
-  if(angle > 0) {
-    cw(100);
-  }
-  else {
-    ccw(100);
-  }
-
-  angle = abs(angle); // might not need - gyro direction output can control idk
 
   starting_angle = gyroAngle(); // get initial angle
 
+  // determine direction of rotation from input
+  if(angle > 0) {
+    cw(150);
+  }
+  else {
+    ccw(150);
+  }
+
   // continue running motor until given angle reached
-  while(rotation < angle) {
+  while(abs(rotation) < abs(angle)) {
     rotation = gyroAngle() - starting_angle;  
   }
   
+  //align(); // align with the wall
   stop(); // stop robot
   
   return;
@@ -742,7 +748,9 @@ void cw(int speedval)
 
 
 //----WRITTEN HELPER FUNCTIONS----
-void StraightLineController(double reference_x, double reference_y, double reference_z, DIRECTION dir)
+void StraightLineController(double reference_x, double reference_y, double reference_z, DIRECTION dir) {
+  double V_x, V_y, V_z;
+  
   Ultradistance = ultrasonic_dist(); // Get distance from front of robot to wall
 
   // Get distances from left side of robot to wall
@@ -757,21 +765,21 @@ void StraightLineController(double reference_x, double reference_y, double refer
   }
 
   IR_long_diff = IR_LONG_1_DIST - IR_LONG_2_DIST; // Difference between long range IRs
-  correction = IR_diff * Kp_straight; // drift correction factor
+  correction = IR_long_diff * Kp_straight; // drift correction factor
   
   // Only use mid range IRs when reversing 15cm away from wall
   if(reference_x == 185) {
     IR_MID_1_DIST = IR_dist(BACK_LEFT);
     IR_MID_2_DIST = IR_dist(BACK_RIGHT);
-    IR_mid_dist = (IR_MID_1_DIST + IR_MID_2_DIST) / 2
+    IR_mid_dist = (IR_MID_1_DIST + IR_MID_2_DIST) / 2;
       
-    double V_x = PID_Controller(15, IR_mid_dist, Kp_x, Ki_x);
+    V_x = PID_Controller(15, IR_mid_dist, Kp_x, Ki_x);
   }
   else { // Else use ultrasonic for x driving
-    double V_x = PID_Controller(reference_x, Ultradistance, Kp_x, Ki_x);
+    V_x = PID_Controller(reference_x, Ultradistance, Kp_x, Ki_x);
   }
-  double V_y = PID_Controller(reference_y, IR_wall_dist, Kp_y, Ki_y);
-  double V_z = PID_Controller(reference_z, 0, Kp_z, Ki_z);
+  V_y = PID_Controller(reference_y, IR_long_dist, Kp_y, Ki_y);
+  V_z = PID_Controller(reference_z, 0, Kp_z, Ki_z);
 
   //Serial.println(V_x);
   
@@ -861,7 +869,6 @@ double PID_Controller (double reference, double current, double Kp, double Ki){
    if(lastError == error) { // i.e. stopped
      intFactor = 0;
      DRIVING = false;
-     break;
    }
    else {
      intFactor = 1;
@@ -887,13 +894,13 @@ double gyroAngle() { // BASIC FOR TESTING - WILL LIKELY REPLACE WITH TURNING CON
   timeElapsed = millis() - prevTime;
   prevTime = millis();
   
-  gyroRate = (analogRead(gyroPin) * gyroSupplyVoltage) / 1023; 
+  gyroRate = ((analogRead(gyroPin) - 505) * gyroSupplyVoltage) / 1023.0; 
   angularVelocity = gyroRate / gyroSensitivity; // angular velocity in degrees/second
-  angleChange = angularVelocity * (timeElapsed * 1000);
+  angleChange = angularVelocity * (timeElapsed / 1000.0);
   currentAngle += angleChange;
-  //Serial.println(currentAngle)
+  Serial.println(currentAngle);
 
-  delay(10);
+  delay(20);
   
   return currentAngle;
 }
@@ -922,11 +929,11 @@ double IR_dist(IR code) { // find distances using calibration curve equations
   switch(code) {
     case LEFT_FRONT:
       adc = analogRead(IR_LONG_1);
-      dist = pow((3127.4 * adc), (-0.92));
+      dist = pow(adc, -1.042) * 6245.5;
       break;
     case LEFT_BACK:
       adc = analogRead(IR_LONG_2);
-      dist = pow((1790.5 * adc), (-0.829));
+      dist = pow(adc, -0.901) * 2730.4;
       break;
     case BACK_LEFT:
       adc = analogRead(IR_MID_1);
@@ -941,9 +948,9 @@ double IR_dist(IR code) { // find distances using calibration curve equations
   est = Kalman(dist, last_est);
   last_est = est;  
       
-  delay(20);
+  delay(10);
       
-  return dist;
+  return est;
 }
 
 // Kalman Filter for IR sensors
