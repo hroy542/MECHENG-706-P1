@@ -41,10 +41,10 @@ const int echoPin = 35;
 
 long Ultraduration;
 int Ultradistance;
+const double ultra_centre_offset = 11.5;
 //----Ultrasound----
 
 //----IR----
-
 double Kp_straight = 100; // gain for keeping robot straight
 
 enum IR {
@@ -62,9 +62,10 @@ double IR_LONG_1_DIST = 0;
 const int IR_LONG_2 = A5;
 double IR_LONG_2_DIST = 0;
 
-double IR_diff = 0;
+double IR_long_diff = 0;
 double correction = 0;
-double IR_wall_dist = 0;
+double IR_long_dist = 0;
+const double long_centre_offset = 4.5;
 
 // Back left mid range IR
 const int IR_MID_1 = A6;
@@ -73,13 +74,17 @@ double IR_MID_1_DIST = 0;
 // Back right mid range IR
 const int IR_MID_2 = A7;
 double IR_MID_2_DIST = 0;
+
+double IR_mid_diff = 0;
+double IR_mid_dist = 0;
+const double mid_centre_offset = 8.0;
 //----IR----
 
 //----IR Kalman Filter----
 double last_est = 0;
 double last_var = 999;
 double process_noise = 1;
-double sensor_noise = 5;    // Change the value of sensor noise to get different KF performance
+double sensor_noise = 25;    // Change the value of sensor noise to get different KF performance
 //----IR Kalman Filter----
 
 //----InverseKinematics----
@@ -107,11 +112,7 @@ right_front_motor.attach(right_front);
 
 
 void loop() {
-
-StraightLineController(reference_x, reference_y, reference_z, Kp_x, Ki_x, Kp_y, Ki_y, Kp_z, Ki_z);  
-
-  
-   
+  StraightLineController(reference_x, reference_y, reference_z, Kp_x, Ki_x, Kp_y, Ki_y, Kp_z, Ki_z);  
 } 
 
 
@@ -124,32 +125,40 @@ void StraightLineController(double reference_x, double reference_y, double refer
   digitalWrite(trigPin, LOW);
   Ultraduration = pulseIn(echoPin, HIGH);
   // Calculating the distance
-  Ultradistance = Ultraduration * 0.034 / 2;
+  Ultradistance = ultra_centre_offset + (Ultraduration * 0.034 / 2);
   //Serial.print("Distance: ");
   //Serial.println(Ultradistance);
-//----Ultrasound----
+  //----Ultrasound----
 
-  // Get distances from left side of robot to wall
+  // Get distances from left side of robot to wall using long range IRs
   IR_LONG_1_DIST = IR_dist(LEFT_FRONT);
   IR_LONG_2_DIST = IR_dist(LEFT_BACK);
   
-  IR_wall_dist = 0.3 * IR_LONG_1_DIST + 0.7 * IR_LONG_2_DIST; // distance of centre of robot to wall
+  IR_long_dist = long_centre_offset + (0.3 * IR_LONG_1_DIST + 0.7 * IR_LONG_2_DIST); // distance of centre of robot to wall
 
-  IR_diff = IR_LONG_1_DIST - IR_LONG_2_DIST; // Difference between long range IRs
-  correction = IR_diff * Kp_straight; // drift correction factor
+  IR_long_diff = IR_LONG_1_DIST - IR_LONG_2_DIST; // Difference between long range IRs
+  correction = IR_long_diff * Kp_straight; // drift correction factor
+  
+  // Get distances from back of robot to wall using mid range IRs - Only when reversing
+  //IR_MID_1_DIST = IR_dist(BACK_LEFT);
+  //IR_MID_2_DIST = IR_dist(BACK_RIGHT);
+  // 
+  //IR_mid_dist = mid_centre_offset + ((IR_MID_1_DIST + IR_MID_2_DIST) / 2); // distance of centre of robot to wall
+  //
+  //IR_mid_diff = IR_MID_1_DIST - IR_MID_2_DIST; // Difference between mid range IRs
   
   //Serial.println(correction);
   
   double V_x = PID_Controller(reference_x, Ultradistance, Kp_x, Ki_x);
-  double V_y = PID_Controller(reference_y, 0, Kp_y, Ki_y);
+  double V_y = PID_Controller(reference_y, IR_long_dist, Kp_y, Ki_y);
   double V_z = PID_Controller(reference_z, 0, Kp_z, Ki_z);
 
   //Serial.println(V_x);
   
-  FL_Ang_Vel = FL_InverseKinematics(V_x, V_y,  V_z);
-  FR_Ang_Vel = FR_InverseKinematics( V_x, V_y, V_z);
-  BL_Ang_Vel = BL_InverseKinematics( V_x,  V_y,  V_z);
-  BR_Ang_Vel = BR_InverseKinematics( V_x, V_y,  V_z); 
+  FL_Ang_Vel = FL_InverseKinematics(V_x, V_y, V_z);
+  FR_Ang_Vel = FR_InverseKinematics(V_x, V_y, V_z);
+  BL_Ang_Vel = BL_InverseKinematics(V_x, V_y, V_z);
+  BR_Ang_Vel = BR_InverseKinematics(V_x, V_y, V_z); 
 
   //Serial.println(FL_Ang_Vel);
 
@@ -253,7 +262,7 @@ double IR_dist(IR code) { // find distances using calibration curve equations
   last_est = est;  
       
   // might need delay dunno
-  delay(1);
+  delay(20);
       
   return est;
 }
