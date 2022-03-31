@@ -41,7 +41,7 @@ const int echoPin = 35;
 
 long Ultraduration;
 int Ultradistance;
-const double ultra_centre_offset = 11.5;
+const double ultra_centre_offset = 10.5;
 //----Ultrasound----
 
 //----IR----
