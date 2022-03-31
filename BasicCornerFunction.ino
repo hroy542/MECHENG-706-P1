@@ -613,7 +613,7 @@ void find_side() { // determine whether on short or long side of rectangle
 void corner_long() { // drives robot to corner if on long side
   int ultra_dist;
   
-  rotate(-90); // rotate 90 degrees CCW
+  rotate(-87); // rotate 90 degrees CCW
   
   ultra_dist = ultrasonic_dist(); // read distance from wall
   driveXY(ultra_dist, 15, LEFT); // strafe left until 15cm from wall
