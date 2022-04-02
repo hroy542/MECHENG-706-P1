@@ -18,14 +18,14 @@ float l = 009.078;
 float R_w = 002.54;
 
 float velocity[3] = {0,0,0};
-float max_velocity[3] = {20,20,0}; // cm/s
+float max_velocity[3] = {25,25,0}; // cm/s
 float ang_vel[4] = {0,0,0,0};
 
 float motor_speed_Value[4] = {0,0,0,0};
 //----InverseKinematicValues----
 
 //----PIDValues----
-float reference[3] = {25,25,0};
+float reference[3] = {15,15,0};
 float currentTime, previousTime, elapsedTime;
 float max_velocities[3] = {500, 500, 600};
 float error[3] = {0,0,0};
@@ -54,7 +54,7 @@ const int trigPin = 34;
 const int echoPin = 35;
 float Ultraduration;
 float Ultradistance;
-const int ultra_centre_offset = 10.5;
+const float ultra_centre_offset = 10.5;
 //----Ultrasound----
 
 //----IR----
@@ -80,7 +80,6 @@ float IR_Angle = 0;
 const float IR_Between_Dist = 12;
 const float long_centre_offset = 4.5;
 
-
 // Back left mid range IR
 const int IR_MID_1 = A6;
 double IR_MID_1_DIST = 0;
@@ -98,7 +97,7 @@ const float mid_centre_offset = 7.0;
 double last_est = 0;
 double last_var = 999;
 double process_noise = 1;
-double sensor_noise = 20;    // Change the value of sensor noise to get different KF performance
+double sensor_noise = 25;    // Change the value of sensor noise to get different KF performance
 //----IR Kalman Filter----
 
 
@@ -119,15 +118,12 @@ void loop() {
   IR_Sensors();
   //error[0] = 0;
   error[0] = reference[0] - Ultradistance;
-  error[1] = 0;//reference[1] - IR_wall_dist;
+  error[1] = reference[1] - IR_wall_dist;
   error[2] = 0;
-  //error[2] = reference[2]-IR_Angle;
   //Serial.println(error[2]);
-  //error[2] = 0;
   PID_Controller();
   inverse_kinematics();
   set_motor_speed();
-  //Serial.println(motor_speed_Value[1]);
   set_motors();
 }
 
@@ -149,7 +145,8 @@ void PID_Controller(){
     //rateError[i] = (error[i]-lastError[i])/elapsedTime;
 
     velocity[i] = (Kp_r[i] * error[i])+(Ki_r[i]*cumError[i]); //+(Kd_r[i]*rateError[i]);
-
+    
+    //constrain
     if(abs(velocity[i]) > max_velocity[i]) {
       if(velocity[i] < 0) {
         velocity [i] = -1 * max_velocity[i];
@@ -187,7 +184,7 @@ void set_motors() {
 
 void set_motor_speed(){
   for (int i = 0; i < 4; i++){
-    motor_speed_Value[i] = ang_vel[i] * 30; // scale angular velocity to motor speed value - NOT TESTED
+    motor_speed_Value[i] = ang_vel[i] * 30; // scale angular velocity to motor speed value - COULD BE TUNED BETTER
 
 //    if ((abs(motor_speed_Value[i])) > 500){
 //      motor_speed_Value[i] = ((abs(motor_speed_Value[i]))/motor_speed_Value[i])*500;
@@ -219,7 +216,7 @@ void IR_Sensors(){
   //Serial.println(IR_diff);
   IR_Angle = atan((IR_diff/IR_Between_Dist));
   correction = Kp_straight * IR_diff;
-  Serial.println(correction);
+  //Serial.println(correction);
   //Serial.println(IR_Angle);
   //IR_Angle = IR_Angle*(3.1415/180);
   //Serial.println(IR_Angle);
@@ -254,13 +251,13 @@ double IR_dist(IR code) { // find distances using calibration curve equations
   last_est = est; 
   
   // might need delay dunno
-  delay(1);
+  delay(5);
       
   return est;
 }
 
 // Kalman Filter for IR sensors
-double Kalman(double rawdata, double prev_est) {   // Kalman Filter
+double Kalman(double rawdata, double prev_est) { 
   double a_priori_est, a_post_est, a_priori_var, a_post_var, kalman_gain;
 
   a_priori_est = prev_est;  
