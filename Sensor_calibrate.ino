@@ -28,8 +28,8 @@ int Analogue7 = 0;
 int Analogue8 = 0;
 double distance4 = 0; //for the calculated distance using the sensor callibrations
 double distance5 = 0;
-double distance6 = 0;
-double distance7 = 0;
+int distance6 = 0;
+int distance7 = 0;
 double Ultdist = 0;
 double angle8 = 0;
 double temp = 0;
@@ -128,8 +128,9 @@ void loop() {
         Analogue4 = analogRead(LEFT_FRONT_LIR); // the read out is a signal from 0-1023 corresponding to 0-5v
         Analogue5 = analogRead(LEFT_BACK_LIR);
 //        Analogue6 = analogRead(LEFT_BACK_MIR);
+        Analogue6 = LEFT_BACK_MIR.getDistance();
 //        Analogue7 = analogRead(RIGHT_BACK_MIR);
-        
+        Analogue7 = RIGHT_BACK_MIR.getDistance();
         //Callibration code goes here
         Serial.print("LFL: ");
         Serial.print(Analogue4);
@@ -218,6 +219,7 @@ void loop() {
         Serial.print(temp);
         Serial.print(" , ");
 //        distance6 = Kalman(temp, Distance6_Past, process_noise6, sensor_noise6, last_var6, 6);
+        distance6 = LEFT_BACK_MIR.getDistance();
         Serial.println(distance6);
 //        Distance6_Past = distance6;
         delay(25);
@@ -233,6 +235,7 @@ void loop() {
         Serial.print(temp);
         Serial.print(" , ");
 //        distance7 = Kalman(temp, Distance7_Past, process_noise7, sensor_noise7, last_var7 ,7);
+        distance7 = RIGHT_BACK_MIR.getDistance();
         Serial.println(distance7);
 //        Distance7_Past = distance7;
         delay(25);
