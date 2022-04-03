@@ -25,7 +25,7 @@ float motor_speed_Value[4] = {0,0,0,0};
 //----InverseKinematicValues----
 
 //----PIDValues----
-float reference[3] = {15,15,0};
+float reference[3] = {20,20,0};
 float currentTime, previousTime, elapsedTime;
 float max_velocities[3] = {500, 500, 600};
 float error[3] = {0,0,0};
@@ -36,11 +36,14 @@ float rateError[3] = {0,0,0};
 int intFactor = 1;
 
 //StraightLine
-float Kp_r[3] = {4,4,3};
-float Ki_r[3] = {0.1,0.1,0.05};
+float Kp_r[3] = {2,4,3};
+float Ki_r[3] = {0.04,0.1,0.05};
 float Kd_r[3] = {0,0,0};
 
-float Kp_straight = 300githubgithub;
+float Pterm = 0;
+float Iterm = 0;
+
+float Kp_straight = 300;
 
 //Turning
 float Kp_t[3] = {0,0,3};
@@ -54,7 +57,7 @@ const int trigPin = 34;
 const int echoPin = 35;
 float Ultraduration;
 float Ultradistance;
-const float ultra_centre_offset = 10.5;
+const float ultra_centre_offset = 10.75;
 //----Ultrasound----
 
 //----IR----
@@ -82,7 +85,7 @@ const float long_centre_offset = 4.5;
 
 // Back left mid range IR
 const int IR_MID_1 = A6;
-double IR_MID_1_DIST = 0;
+float IR_MID_1_DIST = 0;
 
 // Back right mid range IR
 const int IR_MID_2 = A7;
@@ -94,10 +97,10 @@ const float mid_centre_offset = 7.0;
 //----IR----
 
 //----IR Kalman Filter----
-double last_est = 0;
-double last_var = 999;
-double process_noise = 1;
-double sensor_noise = 25;    // Change the value of sensor noise to get different KF performance
+float last_est = 0;
+float last_var = 999;
+float process_noise = 1;
+float sensor_noise = 25;    // Change the value of sensor noise to get different KF performance
 //----IR Kalman Filter----
 
 
@@ -114,11 +117,16 @@ right_front_motor.attach(right_front);
 
 
 void loop() { 
+  Controller();
+}
+
+
+void Controller(){
   Ultrasound();
   IR_Sensors();
   //error[0] = 0;
   error[0] = reference[0] - Ultradistance;
-  error[1] = reference[1] - IR_wall_dist;
+  error[1] = 0;//reference[1] - IR_wall_dist;
   error[2] = 0;
   //Serial.println(error[2]);
   PID_Controller();
@@ -127,26 +135,36 @@ void loop() {
   set_motors();
 }
 
-
-void StraightLineController(){
-}
-
 void PID_Controller(){
    
   currentTime = millis();                
   elapsedTime = (float)(currentTime - previousTime)/1000;  
 
+  if(current
   for (int i = 0; i < 3; i++){
 
     //if(lastError == error) {intFactor = 0;}
     //else {intFactor = 1;}
 
-    cumError[i] += error[i]*elapsedTime;
+    //cumError[i] += error[i]*elapsedTime;
+
+    Pterm = Kp_r[i] * error[i];
+    Iterm += Ki_r[i] * error[i] * elapsedTime;
     //rateError[i] = (error[i]-lastError[i])/elapsedTime;
 
-    velocity[i] = (Kp_r[i] * error[i])+(Ki_r[i]*cumError[i]); //+(Kd_r[i]*rateError[i]);
+    // anti wind-up
+    if(abs(Iterm) > max_velocity[i]) {
+      if(Iterm < 0) {
+        Iterm = -1 * max_velocity[i];
+      }
+      else {
+        Iterm = max_velocity[i];
+      }
+    }
+
+    velocity[i] = (Pterm)+(Iterm); //+(Kd_r[i]*rateError[i]);
     
-    //constrain
+    // constrain to max velocity
     if(abs(velocity[i]) > max_velocity[i]) {
       if(velocity[i] < 0) {
         velocity [i] = -1 * max_velocity[i];
@@ -160,22 +178,22 @@ void PID_Controller(){
     //  velocity[i] = ((abs(velocity[i]))/velocity[i] * max_velocity[i]);                         
     //}
  
-   lastError[i] = error[i];                               
-   previousTime = currentTime;                       
+    lastError[i] = error[i];                               
+    previousTime = currentTime;                       
   }
-
-  //delay(10);
+  delay(25);
 }
 
 void inverse_kinematics(){
   ang_vel[0] = (-velocity[0] - velocity[1] + ((L+l)*velocity[2])) / R_w; // left front
-  ang_vel[1] = (-velocity[0] - velocity[1] + ((L+l)*velocity[2])) / R_w; // left rear
+  ang_vel[1] = (-velocity[0] + velocity[1] + ((L+l)*velocity[2])) / R_w; // left rear
   ang_vel[2] = (velocity[0] + velocity[1] + ((L+l)*velocity[2])) / R_w; // right rear
-  ang_vel[3] = (velocity[0] + velocity[1] + ((L+l)*velocity[2])) / R_w; // right front
+  ang_vel[3] = (velocity[0] - velocity[1] + ((L+l)*velocity[2])) / R_w; // right front
 
 }
 
 void set_motors() {
+  Serial.println(motor_speed_Value[0]);
   left_front_motor.writeMicroseconds(1500 + motor_speed_Value[0] - correction);
   left_rear_motor.writeMicroseconds(1500 + motor_speed_Value[1] - correction);
   right_rear_motor.writeMicroseconds(1500 + motor_speed_Value[2] - correction);
@@ -185,10 +203,6 @@ void set_motors() {
 void set_motor_speed(){
   for (int i = 0; i < 4; i++){
     motor_speed_Value[i] = ang_vel[i] * 30; // scale angular velocity to motor speed value - COULD BE TUNED BETTER
-
-//    if ((abs(motor_speed_Value[i])) > 500){
-//      motor_speed_Value[i] = ((abs(motor_speed_Value[i]))/motor_speed_Value[i])*500;
-//    }
   }
 }
 
