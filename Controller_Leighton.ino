@@ -179,7 +179,7 @@ void PID_Controller(){
     lastError[i] = error[i];                               
     previousTime = currentTime;                       
   }
-  delay(20);
+  delay(20); // could also use millis() to sample it with if statement
 }
 
 void inverse_kinematics(){
