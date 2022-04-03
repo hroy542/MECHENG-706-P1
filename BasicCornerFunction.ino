@@ -34,9 +34,8 @@ const byte right_front = 51;
 //----Ultrasound----
 const int trigPin = 34;
 const int echoPin = 35;
-
-int Ultradistance;
-const double ultra_centre_offset = 10.5;
+float Ultraduration;
+const float ultra_centre_offset = 10.75;
 //----Ultrasound----
 
 
@@ -50,35 +49,37 @@ enum IR {
 
 // Left front long range IR
 const int IR_LONG_1 = A4;
-double IR_LONG_1_DIST = 0;
+float IR_LONG_1_DIST = 0;
 
 // Left back long range IR
 const int IR_LONG_2 = A5;
-double IR_LONG_2_DIST = 0;
+float IR_LONG_2_DIST = 0;
 
-double IR_long_diff = 0;
-double correction = 0;
-double IR_long_dist = 0;
-const double long_centre_offset = 4.5;
+float IR_diff = 0;
+float correction = 0;
+float IR_wall_dist = 0;
+float IR_Angle = 0;
+const float IR_Between_Dist = 12;
+const float long_centre_offset = 4.5;
 
 // Back left mid range IR
 const int IR_MID_1 = A6;
-double IR_MID_1_DIST = 0;
+float IR_MID_1_DIST = 0;
 
 // Back right mid range IR
 const int IR_MID_2 = A7;
-double IR_MID_2_DIST = 0;
+float IR_MID_2_DIST = 0;
 
-double IR_mid_diff = 0;
-double IR_mid_dist = 0;
-const double mid_centre_offset = 7.0;
+float IR_mid_diff = 0;
+float IR_mid_dist = 0;
+const float mid_centre_offset = 7.0;
 //----IR----
 
 //----IR Kalman Filter----
-double last_est = 0;
-double last_var = 999;
-double process_noise = 1;
-double sensor_noise = 25;    // Change the value of sensor noise to get different KF performance
+float last_est = 0;
+float last_var = 999;
+float process_noise = 1;
+float sensor_noise = 25;    // Change the value of sensor noise to get different KF performance
 //----IR Kalman Filter----
 
 //----Gyro----
@@ -98,7 +99,7 @@ float angleChange = 0;
 float currentAngle = 0;               // current angle calculated by angular velocity integral on  
 byte serialRead = 0;
 
-double radiansAngle = 0;
+float radiansAngle = 0;
 //----Gyro----
 
 //----Go to Corner Variables----
@@ -117,41 +118,40 @@ Servo right_rear_motor;  // create servo object to control Vex Motor Controller 
 Servo right_front_motor;  // create servo object to control Vex Motor Controller 29
 Servo turret_motor;
 
-//----InverseKinematics----
-double FL_Ang_Vel = 0;
-double FR_Ang_Vel = 0;
-double BL_Ang_Vel = 0;
-double BR_Ang_Vel = 0;
-
-double FLspeed_val = 0;
-double BLspeed_val = 0;
-double BRspeed_val = 0;
-double FRspeed_val = 0;
-//----InverseKinematics----
-
 //----InverseKinematicValues----
-double L = 7.620;
-double l = 9.078;
-double R_w = 2.54;
+float L = 007.620;
+float l = 009.078;
+float R_w = 002.54;
+
+float velocity[3] = {0,0,0};
+float max_velocity[3] = {25,25,0}; // cm/s
+float ang_vel[4] = {0,0,0,0};
+
+float motor_speed_Value[4] = {0,0,0,0};
 //----InverseKinematicValues----
 
 //----PIDValues----
-double Kp_x = 3.38;    double Ki_x = 0.154;
-double Kp_y = 1.96;    double Ki_y = 0.205;
-double Kp_z = 2.72;    double Ki_z = 0.343;
+float reference[3] = {0,0,0};
+float currentTime, previousTime, elapsedTime;
+float max_velocities[3] = {500, 500, 600};
+float error[3] = {0,0,0};
+float lastError[3] = {0,0,0};
+float rateError[3] = {0,0,0};
 
-double Kp_straight = 100; // gain for keeping robot straight
+float Pterm;
+float Iterm;
 
-double elapsedTime;
-double error;
-double lastError;
-double input, output, setPoint;
-double cumError, rateError;
-int intFactor = 1;
+//StraightLine
+float Kp_r[3] = {2,4,3};
+float Ki_r[3] = {0.04,0.1,0.05};
+float Kd_r[3] = {0,0,0};
 
-double reference_x = 0;
-double reference_y = 0;
-double reference_z = 0;
+float Kp_straight = 300;
+
+//Turning
+float Kp_t[3] = {0,0,3};
+float Ki_t[3] = {0,0,0.05};
+float Kd_t[3] = {0,0,0.5};
 //----PIDValues----
 
 int speed_val = 100;
@@ -535,31 +535,28 @@ void find_corner() { // Drives robot to TL or BR corner
   8. Strafe left into starting position (15cm from wall) ensuring alignment using all IRs
   */
     
-//  orient(); // initial orient of robot perpendicular to wall
-//  
-//  double IR_long_dist = 0.7 * IR_dist(LEFT_FRONT) + 0.3 * IR_dist(LEFT_BACK);
-//
-//  driveXY(20, IR_long_dist, FORWARD);
-//
-//  find_side(); // determines if on long or short side
-//
-//  if(LONG) {
-//    corner_long();
-//    LONG = false;
-//  }
-//  else if(SHORT) {
-//    corner_short();
-//    SHORT = false;
-//  }
+  orient(); // initial orient of robot perpendicular to wall
+  
+  float wall_dist = 0.63 * IR_dist(LEFT_FRONT) + 0.37 * IR_dist(LEFT_BACK);
 
-  align();
-  disable_motors();
+  driveXY(20, wall_dist);
+
+  find_side(); // determines if on long or short side
+
+  if(LONG) {
+    corner_long();
+    LONG = false;
+  }
+  else if(SHORT) {
+    corner_short();
+    SHORT = false;
+  }
 
   // change FSM state - in full code
 }
 
 void orient() { // initial orienting of robot perpendicular to wall using IR
-  double ir1_dist, ir2_dist, ratio;
+  float ir1_dist, ir2_dist, ratio;
   
   // while robot is not perpendicular to wall
   while(!perpendicular) {
@@ -569,8 +566,8 @@ void orient() { // initial orienting of robot perpendicular to wall using IR
     ir1_dist = IR_dist(LEFT_FRONT);
     ir2_dist = IR_dist(LEFT_BACK);
     
-    // if both IRs are within 60cm
-    if(ir1_dist < 60 && ir2_dist < 60) {
+    // if both IRs are within 55cm
+    if(ir1_dist < 55 && ir2_dist < 55) {
       
       // calculate ratio between IR distances
       if(ir1_dist < ir2_dist) {
@@ -593,16 +590,18 @@ void orient() { // initial orienting of robot perpendicular to wall using IR
 }
 
 void find_side() { // determine whether on short or long side of rectangle
-  rotate(175); // rotate robot to see other wall
-  int ultra = ultrasonic_dist();
+  float ultra_dist;
+  
+  rotate(170); // rotate robot to see other wall
+  ultra_dist = Ultrasound();
 
   // if ultrasonic detects > 160 cm - robot on long side
-  if(ultra > 160) {
+  if(ultra_dist > 160) {
     LONG = true;
     SHORT = false;
   }
   // if ultrasonic detects < 130 cm - robot on short side
-  else if(ultra < 130) {
+  else if(ultra_dist < 130) {
     SHORT = true;
     LONG = false;
   }
@@ -611,14 +610,14 @@ void find_side() { // determine whether on short or long side of rectangle
 }
 
 void corner_long() { // drives robot to corner if on long side
-  int ultra_dist;
+  float ultra_dist;
   
-  rotate(-87); // rotate 90 degrees CCW
+  rotate(-85); // rotate 90 degrees CCW
   
-  ultra_dist = ultrasonic_dist(); // read distance from wall
-  driveXY(ultra_dist, 15, LEFT); // strafe left until 15cm from wall
+  ultra_dist = Ultrasound(); // read distance from wall
+  driveXY(ultra_dist, 15); // strafe left until 15cm from wall
   
-  driveXY(185, 15, REVERSE); // reverse until 15cm from wall (starting position)
+  driveXY(185, 15); // reverse until 15cm from wall (starting position)
   align();
   
   stop();
@@ -626,17 +625,16 @@ void corner_long() { // drives robot to corner if on long side
 }
 
 void corner_short() { // drives robot to corner if on short side
-  driveXY(185, 0, REVERSE); // reverse until 15cm from wall
+  driveXY(185, 0); // reverse until 15cm from wall
   align();
   
-  driveXY(185, 15, LEFT); // strafe left into starting position
+  driveXY(185, 15); // strafe left into starting position
   align();
 }
   
-void align() { // aligns robot perpendicular to wall
-  // basic - might need PID control to ensure accuracy
-  double ir1_dist, ir2_dist;
-  double alignment_threshold = 0.1;
+void align() { // uses long range IRs to align robot to wall
+  float ir1_dist, ir2_dist;
+  float alignment_threshold = 0.1;
 
   // read long range IRs
   ir1_dist = IR_dist(LEFT_FRONT);
@@ -666,31 +664,48 @@ void align() { // aligns robot perpendicular to wall
   return;
 }
 
-void driveXY(double x, double y, DIRECTION dir) { // Drives robot straight in X or Y direction (forward/backwards) using PI control
-  DRIVING = true;
+void align_back() { //uses mid range IRs to align to wall
+  float ir1_dist, ir2_dist;
+  float alignment_threshold = 0.1;
+
+  // read long range IRs
+  ir1_dist = IR_dist(BACK_LEFT);
+  ir2_dist = IR_dist(BACK_RIGHT);
+
+  // if already aligned return
+  if(abs(ir1_dist - ir2_dist) <= alignment_threshold) {
+    return;
+  }
+
+  // determine direction of rotation for correction
+  if(ir1_dist > ir2_dist) {
+    ccw(80);
+  }
+  else {
+    cw(80);
+  }
+
+  // update IR distances until aligned
+  do {
+    ir1_dist = IR_dist(BACK_LEFT);
+    ir2_dist = IR_dist(BACK_RIGHT);
+    
+  } while(abs(ir1_dist - ir2_dist) >= alignment_threshold);
+
+  stop(); // stop motors
+  return;
   
-  switch(dir) {
-    case FORWARD:
-      while(DRIVING) {
-        StraightLineController(x, y, 0, FORWARD);
-      }
-      break;
-    case REVERSE:
-      while(DRIVING) {
-        StraightLineController(x, y, 0, REVERSE);
-      }
-      break;
-    case LEFT:
-      while(DRIVING) {
-        StraightLineController(x, y, 0, LEFT);
-      }
-      break;
-    case RIGHT:
-      while(DRIVING) {
-        StraightLineController(x, y, 0, RIGHT);
-      }
-      break;
-  } 
+}
+
+void driveXY(float x, float y) { // Drives robot straight in X or Y direction (forward/backwards) using PI control
+  DRIVING = true;
+
+  reference[0] = x;
+  reference[1] = y;
+
+  while(DRIVING) {
+    Controller(); // need to set DRIVING as false when stopped
+  }
 }
 
 void rotate(int angle) { // Turns robot to ensure alignment +ve = CW, -ve = CCW - WILL LIKELY REPLACE WITH TURNING CONTROLLER
@@ -713,7 +728,7 @@ void rotate(int angle) { // Turns robot to ensure alignment +ve = CW, -ve = CCW 
     rotation = gyroAngle() - starting_angle;  
   }
   
-  //align(); // align with the wall
+  align(); // align with the wall
   stop(); // stop robot
   
   return;
@@ -747,150 +762,87 @@ void cw(int speedval)
 //----OPEN LOOP DRIVING FUNCTIONS----
 
 
-//----WRITTEN HELPER FUNCTIONS----
-void StraightLineController(double reference_x, double reference_y, double reference_z, DIRECTION dir) {
-  double V_x, V_y, V_z;
-  
-  Ultradistance = ultrasonic_dist(); // Get distance from front of robot to wall
-
-  // Get distances from left side of robot to wall
-  IR_LONG_1_DIST = IR_dist(LEFT_FRONT);
-  IR_LONG_2_DIST = IR_dist(LEFT_BACK);
-
-  IR_long_dist = long_centre_offset + (0.3 * IR_LONG_1_DIST + 0.7 * IR_LONG_2_DIST); // distance of centre of robot to wall
-
-  // if input for y is 0, don't take vary V_y
-  if(reference_y == 0) {
-    IR_long_dist = 0;
-  }
-
-  IR_long_diff = IR_LONG_1_DIST - IR_LONG_2_DIST; // Difference between long range IRs
-  correction = IR_long_diff * Kp_straight; // drift correction factor
-  
-  // Only use mid range IRs when reversing 15cm away from wall
-  if(reference_x == 185) {
-    IR_MID_1_DIST = IR_dist(BACK_LEFT);
-    IR_MID_2_DIST = IR_dist(BACK_RIGHT);
-    IR_mid_dist = (IR_MID_1_DIST + IR_MID_2_DIST) / 2;
-      
-    V_x = PID_Controller(15, IR_mid_dist, Kp_x, Ki_x);
-  }
-  else { // Else use ultrasonic for x driving
-    V_x = PID_Controller(reference_x, Ultradistance, Kp_x, Ki_x);
-  }
-  V_y = PID_Controller(reference_y, IR_long_dist, Kp_y, Ki_y);
-  V_z = PID_Controller(reference_z, 0, Kp_z, Ki_z);
-
-  //Serial.println(V_x);
-  
-  FL_Ang_Vel = FL_InverseKinematics(V_x, V_y, V_z);
-  FR_Ang_Vel = FR_InverseKinematics(V_x, V_y, V_z);
-  BL_Ang_Vel = BL_InverseKinematics(V_x, V_y, V_z);
-  BR_Ang_Vel = BR_InverseKinematics(V_x, V_y, V_z); 
-
-  //Serial.println(FL_Ang_Vel);
-
-  //Serial.print(FL_Ang_Vel);
-  
-  double FLspeed_val = WriteMicroseconds(FL_Ang_Vel/100);
-  constrain(FLspeed_val, 0, 500);
-  double BLspeed_val = WriteMicroseconds(BL_Ang_Vel/100);
-  constrain(BLspeed_val, 0, 500);
-  double BRspeed_val = WriteMicroseconds(BR_Ang_Vel/100);
-  constrain(BRspeed_val, 0, 500);
-  double FRspeed_val = WriteMicroseconds(FR_Ang_Vel/100);
-  constrain(FRspeed_val, 0, 500);
-
-  //Serial.println(FLspeed_val);
-  switch(dir) {
-    case FORWARD:
-      left_front_motor.writeMicroseconds(1500 + FLspeed_val - correction);
-      left_rear_motor.writeMicroseconds(1500 + BLspeed_val - correction);
-      right_rear_motor.writeMicroseconds(1500 - BRspeed_val - correction);
-      right_front_motor.writeMicroseconds(1500 - FRspeed_val - correction);
-      break;
-    case REVERSE:
-      left_front_motor.writeMicroseconds(1500 - FLspeed_val - correction);
-      left_rear_motor.writeMicroseconds(1500 - BLspeed_val - correction);
-      right_rear_motor.writeMicroseconds(1500 + BRspeed_val - correction);
-      right_front_motor.writeMicroseconds(1500 + FRspeed_val - correction);
-      break;
-    case LEFT:
-      left_front_motor.writeMicroseconds(1500 - FLspeed_val - correction);
-      left_rear_motor.writeMicroseconds(1500 + BLspeed_val - correction);
-      right_rear_motor.writeMicroseconds(1500 + BRspeed_val - correction);
-      right_front_motor.writeMicroseconds(1500 - FRspeed_val - correction);
-      break;
-    case RIGHT:
-      left_front_motor.writeMicroseconds(1500 + FLspeed_val - correction);
-      left_rear_motor.writeMicroseconds(1500 - BLspeed_val - correction);
-      right_rear_motor.writeMicroseconds(1500 - BRspeed_val - correction);
-      right_front_motor.writeMicroseconds(1500 + FRspeed_val - correction);
-      break;
-  }
-}
-  
-double FL_InverseKinematics(double v_x, double v_y, double omega_z){
-  double FL_Ang_Vel;
-  FL_Ang_Vel = (v_x + v_y -(omega_z*(L+l)))/R_w;
-  return FL_Ang_Vel;
+void Controller(){
+  float Ultradistance = Ultrasound();
+  IR_Sensors();
+  //error[0] = 0;
+  error[0] = reference[0] - Ultradistance;
+  error[1] = reference[1] - IR_wall_dist;
+  error[2] = 0;
+  //Serial.println(error[2]);
+  PID_Controller();
+  inverse_kinematics();
+  set_motor_speed();
+  set_motors();
 }
 
-double FR_InverseKinematics(double v_x, double v_y, double omega_z){
-  double FR_Ang_Vel;
-  FR_Ang_Vel = (v_x - v_y +(omega_z*(L+l)))/R_w;
-  return FR_Ang_Vel;
-}
-
-double BL_InverseKinematics(double v_x, double v_y, double omega_z){
-  double BL_Ang_Vel;
-  BL_Ang_Vel = (v_x - v_y -(omega_z*(L+l)))/R_w;
-  return BL_Ang_Vel;
-}
-
-double BR_InverseKinematics(double v_x, double v_y, double omega_z){
-  double BR_Ang_Vel;
-  BR_Ang_Vel = (v_x + v_y +(omega_z*(L+l)))/R_w;
-  return BR_Ang_Vel;
-}
-
-double PID_Controller (double reference, double current, double Kp, double Ki){
-   //Serial.println("PIDTest");
-   unsigned long currentTime, previousTime;
-   double elapsedTime, error, cumError, rateError, lastError;
+void PID_Controller(){
    
-   currentTime = millis();                
-   elapsedTime = (double)(currentTime - previousTime);       
+  currentTime = millis();                
+  elapsedTime = (float)(currentTime - previousTime)/1000;  
+
+  for (int i = 0; i < 3; i++){
+
+    //cumError[i] += error[i]*elapsedTime;
+
+    Pterm = Kp_r[i] * error[i];
+    Iterm += Ki_r[i] * error[i] * elapsedTime;
+    //rateError[i] = (error[i]-lastError[i])/elapsedTime;
+
+    // anti wind-up
+    if(abs(Iterm) > max_velocity[i]) {
+      if(Iterm < 0) {
+        Iterm = -1 * max_velocity[i];
+      }
+      else {
+        Iterm = max_velocity[i];
+      }
+    }
+
+    velocity[i] = Pterm + Iterm; //+(Kd_r[i]*rateError[i]);
+    
+    // constrain to max velocity
+    if(abs(velocity[i]) > max_velocity[i]) {
+      if(velocity[i] < 0) {
+        velocity [i] = -1 * max_velocity[i];
+      }
+      else {
+        velocity [i] = max_velocity[i];
+      }
+    }
         
-   error = reference - current;     
-   //Serial.println(error); 
-  
-  // anti-windup
-   if(lastError == error) { // i.e. stopped
-     intFactor = 0;
-     DRIVING = false;
-   }
-   else {
-     intFactor = 1;
-   }
-  
-   cumError += error * elapsedTime;                
-   rateError = (error - lastError)/elapsedTime;   
+    //if ((abs(velocity[i])) > max_velocity[i]){
+    //  velocity[i] = ((abs(velocity[i]))/velocity[i] * max_velocity[i]);                         
+    //}
  
-   double out = (Kp*error + Ki*cumError*intFactor);                          
- 
-   lastError = error;                               
-   previousTime = currentTime;                       
- 
-   return out; 
+    lastError[i] = error[i];                               
+    previousTime = currentTime;                       
+  }
+  delay(20);
 }
 
-double WriteMicroseconds (double AngVel){
-  int Microseconds = 430 - sqrt(160149 - (10000*AngVel));
-  return Microseconds;
+
+void inverse_kinematics(){
+  ang_vel[0] = (-velocity[0] - velocity[1] + ((L+l)*velocity[2])) / R_w; // left front
+  ang_vel[1] = (-velocity[0] + velocity[1] + ((L+l)*velocity[2])) / R_w; // left rear
+  ang_vel[2] = (velocity[0] + velocity[1] + ((L+l)*velocity[2])) / R_w; // right rear
+  ang_vel[3] = (velocity[0] - velocity[1] + ((L+l)*velocity[2])) / R_w; // right front
 }
 
-double gyroAngle() { // BASIC FOR TESTING - WILL LIKELY REPLACE WITH TURNING CONTROLLER
+void set_motor_speed(){
+  for (int i = 0; i < 4; i++){
+    motor_speed_Value[i] = ang_vel[i] * 30; // scale angular velocity to motor speed value - COULD BE TUNED BETTER
+  }
+}
+
+void set_motors() {
+  left_front_motor.writeMicroseconds(1500 + motor_speed_Value[0] - correction);
+  left_rear_motor.writeMicroseconds(1500 + motor_speed_Value[1] - correction);
+  right_rear_motor.writeMicroseconds(1500 + motor_speed_Value[2] - correction);
+  right_front_motor.writeMicroseconds(1500 + motor_speed_Value[3] - correction);
+}
+
+float gyroAngle() { // BASIC FOR TESTING - WILL LIKELY REPLACE WITH TURNING CONTROLLER
   timeElapsed = millis() - prevTime;
   prevTime = millis();
   
@@ -898,28 +850,43 @@ double gyroAngle() { // BASIC FOR TESTING - WILL LIKELY REPLACE WITH TURNING CON
   angularVelocity = gyroRate / gyroSensitivity; // angular velocity in degrees/second
   angleChange = angularVelocity * (timeElapsed / 1000.0);
   currentAngle += angleChange;
-  Serial.println(currentAngle);
-
-  delay(20);
+  
+  delay(10);
   
   return currentAngle;
 }
 
-int ultrasonic_dist() {
-  int dist; // cm from centre of robot to wall
-  long Ultraduration;
-  
+float Ultrasound(){
+  float Ultradistance;
+  //----Ultrasound----
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
   digitalWrite(trigPin, HIGH);
   delayMicroseconds(10);
   digitalWrite(trigPin, LOW);
-  
   Ultraduration = pulseIn(echoPin, HIGH);
-  
   // Calculating the distance
-  dist = ultra_centre_offset + (Ultraduration * 0.034 / 2); // calculates distance from centre of robot
-  return dist;
+  Ultradistance = ultra_centre_offset + Ultraduration * 0.0343 / 2;
+  
+  return Ultradistance;
+//----Ultrasound----
+}
+
+void IR_Sensors(){
+  // Get distances from left side of robot to wall
+  IR_LONG_1_DIST = IR_dist(LEFT_FRONT);
+  IR_LONG_2_DIST = IR_dist(LEFT_BACK);
+  //Serial.println(IR_LONG_2_DIST);
+  
+  IR_wall_dist = long_centre_offset + (0.37 * IR_LONG_1_DIST + 0.63 * IR_LONG_2_DIST); // distance of centre of robot to wall
+  IR_diff = IR_LONG_1_DIST - IR_LONG_2_DIST; // Difference between long range IRs
+  //Serial.println(IR_diff);
+  IR_Angle = atan((IR_diff/IR_Between_Dist));
+  correction = Kp_straight * IR_diff;
+  //Serial.println(correction);
+  //Serial.println(IR_Angle);
+  //IR_Angle = IR_Angle*(3.1415/180);
+  //Serial.println(IR_Angle);
 }
   
 double IR_dist(IR code) { // find distances using calibration curve equations
@@ -948,7 +915,7 @@ double IR_dist(IR code) { // find distances using calibration curve equations
   est = Kalman(dist, last_est);
   last_est = est;  
       
-  delay(10);
+  delay(5);
       
   return est;
 }
