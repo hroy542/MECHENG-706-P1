@@ -29,15 +29,12 @@ float reference[3] = {20,20,0};
 float currentTime, previousTime, elapsedTime;
 float max_velocities[3] = {500, 500, 600};
 float error[3] = {0,0,0};
-float cumError[3] = {0,0,0};
 float lastError[3] = {0,0,0};
 float rateError[3] = {0,0,0};
 
-int intFactor = 1;
-
 //StraightLine
-float Kp_r[3] = {2,4,3};
-float Ki_r[3] = {0.04,0.1,0.05};
+float Kp_r[3] = {1.5,4,3};
+float Ki_r[3] = {0.03,0.1,0.05};
 float Kd_r[3] = {0,0,0};
 
 float Pterm = 0;
@@ -133,6 +130,8 @@ void Controller(){
   inverse_kinematics();
   set_motor_speed();
   set_motors();
+  int out = left_front_motor.readMicroseconds();
+  Serial.println(out);
 }
 
 void PID_Controller(){
@@ -140,7 +139,6 @@ void PID_Controller(){
   currentTime = millis();                
   elapsedTime = (float)(currentTime - previousTime)/1000;  
 
-  if(current
   for (int i = 0; i < 3; i++){
 
     //if(lastError == error) {intFactor = 0;}
@@ -181,7 +179,7 @@ void PID_Controller(){
     lastError[i] = error[i];                               
     previousTime = currentTime;                       
   }
-  delay(25);
+  delay(20);
 }
 
 void inverse_kinematics(){
@@ -193,7 +191,7 @@ void inverse_kinematics(){
 }
 
 void set_motors() {
-  Serial.println(motor_speed_Value[0]);
+  //Serial.println(motor_speed_Value[0]);
   left_front_motor.writeMicroseconds(1500 + motor_speed_Value[0] - correction);
   left_rear_motor.writeMicroseconds(1500 + motor_speed_Value[1] - correction);
   right_rear_motor.writeMicroseconds(1500 + motor_speed_Value[2] - correction);
@@ -215,7 +213,7 @@ void Ultrasound(){
   digitalWrite(trigPin, LOW);
   Ultraduration = pulseIn(echoPin, HIGH);
   // Calculating the distance
-  Ultradistance = ultra_centre_offset + Ultraduration * 0.034 / 2;
+  Ultradistance = ultra_centre_offset + Ultraduration * 0.0343 / 2;
 //----Ultrasound----
 }
 
@@ -264,7 +262,6 @@ double IR_dist(IR code) { // find distances using calibration curve equations
   est = Kalman(dist, last_est);
   last_est = est; 
   
-  // might need delay dunno
   delay(5);
       
   return est;
