@@ -37,7 +37,7 @@ const int echoPin = 35;
 float Ultraduration;
 const float ultra_centre_offset = 10.75;
 
-const int ultra_sampling_time = 60; //60ms sampling time as recommended in data sheet
+const int ultra_sampling_time = 50; //50ms sampling time as recommended in data sheet
 int ultra_time;
 int prev_ultra_time;
 bool ultra_first_call = true;
@@ -105,7 +105,7 @@ float currentAngle = 0;               // current angle calculated by angular vel
 byte serialRead = 0;
 
 float radiansAngle = 0;
-const float rotation_scale_factor = 0.93;
+const float rotation_scale_factor = 0.93; // rotation overshoot correction
 //----Gyro----
 
 //----Go to Corner Variables----
@@ -604,7 +604,9 @@ void find_side() { // determine whether on short or long side of rectangle
   float ultra_dist;
   
   rotate(180); // rotate robot to see other wall
+
   ultra_dist = Ultrasound();
+  ultra_first_call = true;
 
   // if ultrasonic detects > 160 cm - robot on long side
   if(ultra_dist > 160) {
@@ -624,8 +626,10 @@ void corner_long() { // drives robot to corner if on long side
   float ultra_dist;
   
   rotate(-90); // rotate 90 degrees CCW
-  
+
   ultra_dist = Ultrasound(); // read distance from wall
+  ultra_first_call = true;
+  
   driveXY(ultra_dist, 15); // strafe left until 15cm from wall
   
   driveXY(185, 15); // reverse until 15cm from wall (starting position)
@@ -790,6 +794,10 @@ void Controller(){
   inverse_kinematics();
   set_motor_speed();
   set_motors();
+
+  if(abs(error[0] + error[1]) < 2) {
+    DRIVING = false;
+  }
 }
 
 void PID_Controller(){
@@ -876,7 +884,7 @@ float Ultrasound() {
   float Ultradistance;
   ultra_time = millis() - prev_ultra_time;
   
-  if(ultra_time >= ultra_sampling_time || (ultra_first_call)) { //16.67Hz
+  if(ultra_time >= ultra_sampling_time || (ultra_first_call)) { //20Hz
     digitalWrite(trigPin, LOW);
     delayMicroseconds(2);
     digitalWrite(trigPin, HIGH);
@@ -887,6 +895,7 @@ float Ultrasound() {
     Ultradistance = ultra_centre_offset + (Ultraduration * 0.034 / 2);
 
     prev_ultra_time = ultra_time;
+
     ultra_first_call = false;
   }
   
@@ -936,7 +945,7 @@ double IR_dist(IR code) { // find distances using calibration curve equations
   est = Kalman(dist, last_est);
   last_est = est;  
       
-  delay(5);
+  delay(1);
       
   return est;
 }
