@@ -36,6 +36,11 @@ const int trigPin = 34;
 const int echoPin = 35;
 float Ultraduration;
 const float ultra_centre_offset = 10.75;
+
+const int ultra_sampling_time = 60; //60ms sampling time as recommended in data sheet
+int ultra_time;
+int prev_ultra_time;
+bool ultra_first_call = true;
 //----Ultrasound----
 
 
@@ -100,6 +105,7 @@ float currentAngle = 0;               // current angle calculated by angular vel
 byte serialRead = 0;
 
 float radiansAngle = 0;
+const float rotation_scale_factor = 0.93;
 //----Gyro----
 
 //----Go to Corner Variables----
@@ -146,12 +152,17 @@ float Kp_r[3] = {2,4,3};
 float Ki_r[3] = {0.04,0.1,0.05};
 float Kd_r[3] = {0,0,0};
 
-float Kp_straight = 300;
+float Kp_straight = 200;
 
 //Turning
 float Kp_t[3] = {0,0,3};
 float Ki_t[3] = {0,0,0.05};
 float Kd_t[3] = {0,0,0.5};
+
+const int pid_sample_time = 50; // 50ms sampling period - 20Hz
+int pid_time = 0;
+int prev_pid_time = 0;
+bool pid_first_call = true;
 //----PIDValues----
 
 int speed_val = 100;
@@ -592,7 +603,7 @@ void orient() { // initial orienting of robot perpendicular to wall using IR
 void find_side() { // determine whether on short or long side of rectangle
   float ultra_dist;
   
-  rotate(170); // rotate robot to see other wall
+  rotate(180); // rotate robot to see other wall
   ultra_dist = Ultrasound();
 
   // if ultrasonic detects > 160 cm - robot on long side
@@ -612,7 +623,7 @@ void find_side() { // determine whether on short or long side of rectangle
 void corner_long() { // drives robot to corner if on long side
   float ultra_dist;
   
-  rotate(-85); // rotate 90 degrees CCW
+  rotate(-90); // rotate 90 degrees CCW
   
   ultra_dist = Ultrasound(); // read distance from wall
   driveXY(ultra_dist, 15); // strafe left until 15cm from wall
@@ -706,12 +717,18 @@ void driveXY(float x, float y) { // Drives robot straight in X or Y direction (f
   while(DRIVING) {
     Controller(); // need to set DRIVING as false when stopped
   }
+  
+  // reset flags
+  ultra_first_call = true;
+  pid_first_call = true;
 }
 
 void rotate(int angle) { // Turns robot to ensure alignment +ve = CW, -ve = CCW - WILL LIKELY REPLACE WITH TURNING CONTROLLER
   double rotation = 0; 
   double starting_angle = 0;
   currentAngle = 0;
+  
+  angle = angle * rotation_scale_factor;
 
   starting_angle = gyroAngle(); // get initial angle
 
@@ -761,7 +778,6 @@ void cw(int speedval)
 }
 //----OPEN LOOP DRIVING FUNCTIONS----
 
-
 void Controller(){
   float Ultradistance = Ultrasound();
   IR_Sensors();
@@ -777,48 +793,48 @@ void Controller(){
 }
 
 void PID_Controller(){
-   
+
   currentTime = millis();                
-  elapsedTime = (float)(currentTime - previousTime)/1000;  
+  elapsedTime = (currentTime - previousTime)/1000.0; 
+  
+  pid_time = currentTime - prev_pid_time;
 
-  for (int i = 0; i < 3; i++){
-
-    //cumError[i] += error[i]*elapsedTime;
-
-    Pterm = Kp_r[i] * error[i];
-    Iterm += Ki_r[i] * error[i] * elapsedTime;
-    //rateError[i] = (error[i]-lastError[i])/elapsedTime;
-
-    // anti wind-up
-    if(abs(Iterm) > max_velocity[i]) {
-      if(Iterm < 0) {
-        Iterm = -1 * max_velocity[i];
-      }
-      else {
-        Iterm = max_velocity[i];
-      }
-    }
-
-    velocity[i] = Pterm + Iterm; //+(Kd_r[i]*rateError[i]);
+  if(pid_time >= pid_sample_time || (pid_first_call)) { // sampled at 20Hz
     
-    // constrain to max velocity
-    if(abs(velocity[i]) > max_velocity[i]) {
-      if(velocity[i] < 0) {
-        velocity [i] = -1 * max_velocity[i];
+    for (int i = 0; i < 3; i++) {
+      Pterm = Kp_r[i] * error[i];
+      Iterm += Ki_r[i] * error[i] * elapsedTime;
+      //rateError[i] = (error[i]-lastError[i])/elapsedTime;
+  
+      // anti wind-up
+      if(abs(Iterm) > max_velocity[i]) {
+        if(Iterm < 0) {
+          Iterm = -1 * max_velocity[i];
+        }
+        else {
+          Iterm = max_velocity[i];
+        }
       }
-      else {
-        velocity [i] = max_velocity[i];
+  
+      velocity[i] = (Pterm)+(Iterm); //+(Kd_r[i]*rateError[i]);
+      
+      // constrain to max velocity
+      if(abs(velocity[i]) > max_velocity[i]) {
+        if(velocity[i] < 0) {
+          velocity [i] = -1 * max_velocity[i];
+        }
+        else {
+          velocity [i] = max_velocity[i];
+        }
       }
+   
+      lastError[i] = error[i];                                                
     }
-        
-    //if ((abs(velocity[i])) > max_velocity[i]){
-    //  velocity[i] = ((abs(velocity[i]))/velocity[i] * max_velocity[i]);                         
-    //}
- 
-    lastError[i] = error[i];                               
-    previousTime = currentTime;                       
+    
+    pid_first_call = false;
+    previousTime = currentTime; 
+    prev_pid_time = pid_time; 
   }
-  delay(20);
 }
 
 
@@ -856,20 +872,25 @@ float gyroAngle() { // BASIC FOR TESTING - WILL LIKELY REPLACE WITH TURNING CONT
   return currentAngle;
 }
 
-float Ultrasound(){
+float Ultrasound() {
   float Ultradistance;
-  //----Ultrasound----
-  digitalWrite(trigPin, LOW);
-  delayMicroseconds(2);
-  digitalWrite(trigPin, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(trigPin, LOW);
-  Ultraduration = pulseIn(echoPin, HIGH);
-  // Calculating the distance
-  Ultradistance = ultra_centre_offset + Ultraduration * 0.0343 / 2;
+  ultra_time = millis() - prev_ultra_time;
+  
+  if(ultra_time >= ultra_sampling_time || (ultra_first_call)) { //16.67Hz
+    digitalWrite(trigPin, LOW);
+    delayMicroseconds(2);
+    digitalWrite(trigPin, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(trigPin, LOW);
+    Ultraduration = pulseIn(echoPin, HIGH);
+    // Calculating the distance
+    Ultradistance = ultra_centre_offset + (Ultraduration * 0.034 / 2);
+
+    prev_ultra_time = ultra_time;
+    ultra_first_call = false;
+  }
   
   return Ultradistance;
-//----Ultrasound----
 }
 
 void IR_Sensors(){
