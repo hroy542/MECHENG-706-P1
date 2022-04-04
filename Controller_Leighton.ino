@@ -61,7 +61,7 @@ float Ultraduration;
 float Ultradistance = 0;
 const float ultra_centre_offset = 10.75;
 
-const int ultra_sampling_time = 60; //60ms sampling time as recommended in data sheet
+const int ultra_sampling_time = 50; //50ms sampling time as recommended in data sheet
 int ultra_time;
 int prev_ultra_time;
 bool ultra_first_call = true;
@@ -153,11 +153,6 @@ void PID_Controller(){
   if(pid_time >= pid_sample_time || (pid_first_call)) { // sampled at 20Hz
     for (int i = 0; i < 3; i++){
   
-      //if(lastError == error) {intFactor = 0;}
-      //else {intFactor = 1;}
-  
-      //cumError[i] += error[i]*elapsedTime;
-  
       Pterm = Kp_r[i] * error[i];
       Iterm += Ki_r[i] * error[i] * elapsedTime;
       //rateError[i] = (error[i]-lastError[i])/elapsedTime;
@@ -184,10 +179,6 @@ void PID_Controller(){
         }
       }
           
-      //if ((abs(velocity[i])) > max_velocity[i]){
-      //  velocity[i] = ((abs(velocity[i]))/velocity[i] * max_velocity[i]);                         
-      //}
-   
       lastError[i] = error[i];                                                
     }
     pid_first_call = false;
@@ -201,7 +192,6 @@ void inverse_kinematics(){
   ang_vel[1] = (-velocity[0] + velocity[1] + ((L+l)*velocity[2])) / R_w; // left rear
   ang_vel[2] = (velocity[0] + velocity[1] + ((L+l)*velocity[2])) / R_w; // right rear
   ang_vel[3] = (velocity[0] - velocity[1] + ((L+l)*velocity[2])) / R_w; // right front
-
 }
 
 void set_motors() {
@@ -281,7 +271,7 @@ double IR_dist(IR code) { // find distances using calibration curve equations
   est = Kalman(dist, last_est);
   last_est = est; 
   
-  delay(3);
+  delay(1);
       
   return est;
 }
