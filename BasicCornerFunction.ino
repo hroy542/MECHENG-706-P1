@@ -115,6 +115,8 @@ bool SHORT = false;
 bool DRIVING = false;
 //----Go to Corner Variables----
 
+float K_align = 200;
+
 // Anything over 400 cm (23200 us pulse) is "out of range". Hit:If you decrease to this the ranging sensor but the timeout is short, you may not need to read up to 4meters.
 const unsigned int MAX_DIST = 23200;
 
@@ -647,6 +649,39 @@ void corner_short() { // drives robot to corner if on short side
   align();
 }
   
+void align_controller() { // uses long range IRs with gain to align robot to wall - TO TEST
+  float ir1_dist, ir2_dist, diff, power;
+  float alignment_threshold = 0.1;
+
+  // read long range IRs
+  ir1_dist = IR_dist(LEFT_FRONT);
+  ir2_dist = IR_dist(LEFT_BACK);
+
+  // if already aligned return
+  if(abs(diff) <= alignment_threshold) {
+    return;
+  }
+
+  // update IR distances until aligned
+  do {
+    ir1_dist = IR_dist(LEFT_FRONT);
+    ir2_dist = IR_dist(LEFT_BACK);
+    
+    diff = ir1_dist - ir2_dist;
+    power = K_align * diff;
+    
+    // send power
+    left_front_motor.writeMicroseconds(1500 - power);
+    left_rear_motor.writeMicroseconds(1500 - power);
+    right_front_motor.writeMicroseconds(1500 - power);
+    right_rear_motor.writeMicroseconds(1500 - power);
+       
+  } while(abs(diff) >= alignment_threshold);
+
+  stop(); // stop motors
+  return;
+}
+
 void align() { // uses long range IRs to align robot to wall
   float ir1_dist, ir2_dist;
   float alignment_threshold = 0.1;
@@ -678,6 +713,7 @@ void align() { // uses long range IRs to align robot to wall
   stop(); // stop motors
   return;
 }
+
 
 void align_back() { //uses mid range IRs to align to wall
   float ir1_dist, ir2_dist;
