@@ -32,15 +32,20 @@ float error[3] = {0,0,0};
 float lastError[3] = {0,0,0};
 float rateError[3] = {0,0,0};
 
+const int pid_sample_time = 50; // 50ms sampling period - 20Hz
+int pid_time = 0;
+int prev_pid_time = 0;
+bool pid_first_call = true;
+
 //StraightLine
-float Kp_r[3] = {1.5,4,3};
+float Kp_r[3] = {1.5,6,3};
 float Ki_r[3] = {0.03,0.1,0.05};
 float Kd_r[3] = {0,0,0};
 
 float Pterm = 0;
 float Iterm = 0;
 
-float Kp_straight = 300;
+float Kp_straight = 200;
 
 //Turning
 float Kp_t[3] = {0,0,3};
@@ -53,8 +58,13 @@ float Kd_t[3] = {0,0,0.5};
 const int trigPin = 34;
 const int echoPin = 35;
 float Ultraduration;
-float Ultradistance;
+float Ultradistance = 0;
 const float ultra_centre_offset = 10.75;
+
+const int ultra_sampling_time = 60; //60ms sampling time as recommended in data sheet
+int ultra_time;
+int prev_ultra_time;
+bool ultra_first_call = true;
 //----Ultrasound----
 
 //----IR----
@@ -117,7 +127,6 @@ void loop() {
   Controller();
 }
 
-
 void Controller(){
   Ultrasound();
   IR_Sensors();
@@ -135,51 +144,56 @@ void Controller(){
 }
 
 void PID_Controller(){
-   
+
   currentTime = millis();                
-  elapsedTime = (float)(currentTime - previousTime)/1000;  
+  elapsedTime = (currentTime - previousTime)/1000.0; 
+  
+  pid_time = currentTime - prev_pid_time;
 
-  for (int i = 0; i < 3; i++){
-
-    //if(lastError == error) {intFactor = 0;}
-    //else {intFactor = 1;}
-
-    //cumError[i] += error[i]*elapsedTime;
-
-    Pterm = Kp_r[i] * error[i];
-    Iterm += Ki_r[i] * error[i] * elapsedTime;
-    //rateError[i] = (error[i]-lastError[i])/elapsedTime;
-
-    // anti wind-up
-    if(abs(Iterm) > max_velocity[i]) {
-      if(Iterm < 0) {
-        Iterm = -1 * max_velocity[i];
+  if(pid_time >= pid_sample_time || (pid_first_call)) { // sampled at 20Hz
+    for (int i = 0; i < 3; i++){
+  
+      //if(lastError == error) {intFactor = 0;}
+      //else {intFactor = 1;}
+  
+      //cumError[i] += error[i]*elapsedTime;
+  
+      Pterm = Kp_r[i] * error[i];
+      Iterm += Ki_r[i] * error[i] * elapsedTime;
+      //rateError[i] = (error[i]-lastError[i])/elapsedTime;
+  
+      // anti wind-up
+      if(abs(Iterm) > max_velocity[i]) {
+        if(Iterm < 0) {
+          Iterm = -1 * max_velocity[i];
+        }
+        else {
+          Iterm = max_velocity[i];
+        }
       }
-      else {
-        Iterm = max_velocity[i];
+  
+      velocity[i] = (Pterm)+(Iterm); //+(Kd_r[i]*rateError[i]);
+      
+      // constrain to max velocity
+      if(abs(velocity[i]) > max_velocity[i]) {
+        if(velocity[i] < 0) {
+          velocity [i] = -1 * max_velocity[i];
+        }
+        else {
+          velocity [i] = max_velocity[i];
+        }
       }
+          
+      //if ((abs(velocity[i])) > max_velocity[i]){
+      //  velocity[i] = ((abs(velocity[i]))/velocity[i] * max_velocity[i]);                         
+      //}
+   
+      lastError[i] = error[i];                                                
     }
-
-    velocity[i] = (Pterm)+(Iterm); //+(Kd_r[i]*rateError[i]);
-    
-    // constrain to max velocity
-    if(abs(velocity[i]) > max_velocity[i]) {
-      if(velocity[i] < 0) {
-        velocity [i] = -1 * max_velocity[i];
-      }
-      else {
-        velocity [i] = max_velocity[i];
-      }
-    }
-        
-    //if ((abs(velocity[i])) > max_velocity[i]){
-    //  velocity[i] = ((abs(velocity[i]))/velocity[i] * max_velocity[i]);                         
-    //}
- 
-    lastError[i] = error[i];                               
-    previousTime = currentTime;                       
+    pid_first_call = false;
+    previousTime = currentTime; 
+    prev_pid_time = pid_time; 
   }
-  delay(20); // could also use millis() to sample it with if statement
 }
 
 void inverse_kinematics(){
@@ -205,16 +219,21 @@ void set_motor_speed(){
 }
 
 void Ultrasound(){
-  //----Ultrasound----
-  digitalWrite(trigPin, LOW);
-  delayMicroseconds(2);
-  digitalWrite(trigPin, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(trigPin, LOW);
-  Ultraduration = pulseIn(echoPin, HIGH);
-  // Calculating the distance
-  Ultradistance = ultra_centre_offset + Ultraduration * 0.0343 / 2;
-//----Ultrasound----
+  ultra_time = millis() - prev_ultra_time;
+  
+  if(ultra_time >= ultra_sampling_time || (ultra_first_call)) { //16.67Hz
+    digitalWrite(trigPin, LOW);
+    delayMicroseconds(2);
+    digitalWrite(trigPin, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(trigPin, LOW);
+    Ultraduration = pulseIn(echoPin, HIGH);
+    // Calculating the distance
+    Ultradistance = ultra_centre_offset + (Ultraduration * 0.034 / 2);
+
+    prev_ultra_time = ultra_time;
+    ultra_first_call = false;
+  }
 }
 
 void IR_Sensors(){
@@ -262,7 +281,7 @@ double IR_dist(IR code) { // find distances using calibration curve equations
   est = Kalman(dist, last_est);
   last_est = est; 
   
-  delay(5);
+  delay(3);
       
   return est;
 }
