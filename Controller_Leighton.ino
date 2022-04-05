@@ -18,14 +18,14 @@ float l = 009.078;
 float R_w = 002.54;
 
 float velocity[3] = {0,0,0};
-float max_velocity[3] = {25,25,0}; // cm/s
+float max_velocity[3] = {25,20,15}; // cm/s
 float ang_vel[4] = {0,0,0,0};
 
 float motor_speed_Value[4] = {0,0,0,0};
 //----InverseKinematicValues----
 
 //----PIDValues----
-float reference[3] = {20,20,0};
+float reference[3] = {20,20,PI};
 float currentTime, previousTime, elapsedTime;
 float max_velocities[3] = {500, 500, 600};
 float error[3] = {0,0,0};
@@ -38,8 +38,8 @@ int prev_pid_time = 0;
 bool pid_first_call = true;
 
 //StraightLine
-float Kp_r[3] = {1.5,6,3};
-float Ki_r[3] = {0.03,0.1,0.05};
+float Kp_r[3] = {1.5,6,23};
+float Ki_r[3] = {0.03,0.1,0.5};
 float Kd_r[3] = {0,0,0};
 
 float Pterm = 0;
@@ -53,6 +53,26 @@ float Ki_t[3] = {0,0,0.05};
 float Kd_t[3] = {0,0,0.5};
 //----PIDValues----
 
+//----Gyro----
+const int gyroPin = A8;           //define the pin that gyro is connected  
+int T = 100;                        // T is the time of one loop, 0.1 sec  
+int gyroADC = 0;           // read out value of sensor  
+float gyroSupplyVoltage = 5;      // supply voltage for gyro 
+float gyroZeroVoltage = 0;         // the value of voltage when gyro is zero  
+float gyroSensitivity = 0.007;      // gyro sensitivity unit is (mv/degree/second) get from datasheet  
+float rotationThreshold = 1.5;      // because of gyro drifting, defining rotation angular velocity less  
+float angularVelocity = 0;
+                                                       // than this value will be ignored 
+int timeElapsed = 0;
+int prevTime = 0;
+float gyroRate = 0;                      // read out value of sensor in voltage   
+float angleChange = 0;
+float currentAngle = 0;               // current angle calculated by angular velocity integral on  
+byte serialRead = 0;
+
+float radiansAngle = 0;
+const float rotation_scale_factor = 0.93; // rotation overshoot correction
+//----Gyro----
 
 //----Ultrasound----
 const int trigPin = 34;
@@ -128,12 +148,13 @@ void loop() {
 }
 
 void Controller(){
-  Ultrasound();
-  IR_Sensors();
+  gyro();
+  //Ultrasound();
+  //IR_Sensors();
   //error[0] = 0;
   error[0] = reference[0] - Ultradistance;
   error[1] = 0;//reference[1] - IR_wall_dist;
-  error[2] = 0;
+  error[2] = 0;//reference[2] - radiansAngle;
   //Serial.println(error[2]);
   PID_Controller();
   inverse_kinematics();
@@ -204,7 +225,7 @@ void set_motors() {
 
 void set_motor_speed(){
   for (int i = 0; i < 4; i++){
-    motor_speed_Value[i] = ang_vel[i] * 30; // scale angular velocity to motor speed value - COULD BE TUNED BETTER
+    motor_speed_Value[i] = ang_vel[i] * 32; // scale angular velocity to motor speed value - COULD BE TUNED BETTER
   }
 }
 
@@ -243,6 +264,18 @@ void IR_Sensors(){
   //Serial.println(IR_Angle);
 }
 
+void gyro() { // could be tuned better
+  timeElapsed = millis() - prevTime;
+  prevTime = millis();
+  
+  gyroRate = ((analogRead(gyroPin) - 505.0) * gyroSupplyVoltage) / 1023.0; 
+  angularVelocity = gyroRate / gyroSensitivity; // angular velocity in degrees/second
+  angleChange = angularVelocity * (timeElapsed / 1000.0);
+  currentAngle += angleChange;
+  radiansAngle = currentAngle * (PI/180);
+  
+  delay(10);
+}
 
 double IR_dist(IR code) { // find distances using calibration curve equations
   double est, dist;
