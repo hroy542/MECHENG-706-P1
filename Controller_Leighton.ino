@@ -42,9 +42,7 @@ float Kp_r[3] = {1.5,6,23};
 float Ki_r[3] = {0.03,0.1,0.5};
 float Kd_r[3] = {0,0,0};
 
-float Pterm = 0;
-float Iterm = 0;
-float Dterm = 0;
+float Pterm, Iterm, Dterm;
 
 float Kp_straight = 200;
 
