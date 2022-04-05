@@ -115,7 +115,7 @@ bool SHORT = false;
 bool DRIVING = false;
 //----Go to Corner Variables----
 
-float K_align = 200;
+float Kp_align = 200; // gain for aligning to wall
 
 // Anything over 400 cm (23200 us pulse) is "out of range". Hit:If you decrease to this the ranging sensor but the timeout is short, you may not need to read up to 4meters.
 const unsigned int MAX_DIST = 23200;
@@ -146,8 +146,7 @@ float error[3] = {0,0,0};
 float lastError[3] = {0,0,0};
 float rateError[3] = {0,0,0};
 
-float Pterm;
-float Iterm;
+float Pterm, Iterm, Dterm;
 
 //StraightLine
 float Kp_r[3] = {2,4,3};
@@ -848,7 +847,7 @@ void PID_Controller(){
     for (int i = 0; i < 3; i++) {
       Pterm = Kp_r[i] * error[i];
       Iterm += Ki_r[i] * error[i] * elapsedTime;
-      //rateError[i] = (error[i]-lastError[i])/elapsedTime;
+      Dterm = Kd_r[i] * ((error[i]-lastError[i])/elapsedTime);
   
       // anti wind-up
       if(abs(Iterm) > max_velocity[i]) {
@@ -860,7 +859,7 @@ void PID_Controller(){
         }
       }
   
-      velocity[i] = (Pterm)+(Iterm); //+(Kd_r[i]*rateError[i]);
+      velocity[i] = Pterm + Iterm + Dterm;
       
       // constrain to max velocity
       if(abs(velocity[i]) > max_velocity[i]) {
