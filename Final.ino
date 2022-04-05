@@ -155,8 +155,7 @@ float error[3] = {0,0,0};
 float lastError[3] = {0,0,0};
 float rateError[3] = {0,0,0};
 
-float Pterm;
-float Iterm;
+float Pterm, Iterm, Dterm;
 
 //StraightLine
 float Kp_r[3] = {2,4,3};
@@ -900,6 +899,7 @@ void cw(int speedval)
 }
 //----OPEN LOOP DRIVING FUNCTIONS----
 
+//----CONTROL----
 void Controller(){
   float Ultradistance = Ultrasound();
   IR_Sensors();
@@ -930,7 +930,7 @@ void PID_Controller(){
     for (int i = 0; i < 3; i++) {
       Pterm = Kp_r[i] * error[i];
       Iterm += Ki_r[i] * error[i] * elapsedTime;
-      //rateError[i] = (error[i]-lastError[i])/elapsedTime;
+      Dterm = Kd_r[i] * ((error[i]-lastError[i])/elapsedTime);
   
       // anti wind-up
       if(abs(Iterm) > max_velocity[i]) {
@@ -942,7 +942,7 @@ void PID_Controller(){
         }
       }
   
-      velocity[i] = (Pterm)+(Iterm); //+(Kd_r[i]*rateError[i]);
+      velocity[i] = Pterm + Iterm + Dterm;
       
       // constrain to max velocity
       if(abs(velocity[i]) > max_velocity[i]) {
