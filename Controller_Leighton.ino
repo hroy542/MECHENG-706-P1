@@ -44,6 +44,7 @@ float Kd_r[3] = {0,0,0};
 
 float Pterm = 0;
 float Iterm = 0;
+float Dterm = 0;
 
 float Kp_straight = 200;
 
@@ -176,7 +177,7 @@ void PID_Controller(){
   
       Pterm = Kp_r[i] * error[i];
       Iterm += Ki_r[i] * error[i] * elapsedTime;
-      //rateError[i] = (error[i]-lastError[i])/elapsedTime;
+      Dterm = Kd_r[i] * ((error[i]-lastError[i])/elapsedTime);
   
       // anti wind-up
       if(abs(Iterm) > max_velocity[i]) {
@@ -188,7 +189,7 @@ void PID_Controller(){
         }
       }
   
-      velocity[i] = (Pterm)+(Iterm); //+(Kd_r[i]*rateError[i]);
+      velocity[i] = (Pterm)  +(Iterm) + (Dterm);
       
       // constrain to max velocity
       if(abs(velocity[i]) > max_velocity[i]) {
