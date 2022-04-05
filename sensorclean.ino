@@ -18,6 +18,9 @@ float Ultradistance;
 const float ultra_centre_offset = 11.5;
 const int maxdist = 335;
 const float mindist = 2.5;
+unsigned long current_time = 0;
+unsigned long previous_time = 0;
+bool timer_first_call = true;
 
 ///*----GYRO Variables----
 float EMA_a = 0.4;
@@ -36,8 +39,8 @@ float angularVelocity = 0;
 //----Kalman Filter----
 float sensor_past[6] = {0,0,0,0,0,0}; //ORDER GOES; [1]FRONT LIR, [2]BACK LIR, [3]LEFT MIR, [4]RIGHT MIR, [5]SONAR, [6]GYRO
 float last_var[6] = {999,999,999,999,999,999}; //ORDER GOES; [1]FRONT LIR, [2]BACK LIR, [3]LEFT MIR, [4]RIGHT MIR, [5]SONAR, [6]GYRO
-float process_noise[6] = {5,5,5,5,1,1}; //ORDER GOES; [1]FRONT LIR, [2]BACK LIR, [3]LEFT MIR, [4]RIGHT MIR, [5]SONAR, [6]GYRO
-float sensor_noise[6] = {5,5,5,5,2,25}; //ORDER GOES; [1]FRONT LIR, [2]BACK LIR, [3]LEFT MIR, [4]RIGHT MIR, [5]SONAR, [6]GYRO
+float process_noise[6] = {5,5,5,5,10,1}; //ORDER GOES; [1]FRONT LIR, [2]BACK LIR, [3]LEFT MIR, [4]RIGHT MIR, [5]SONAR, [6]GYRO
+float sensor_noise[6] = {5,5,5,5,50,25}; //ORDER GOES; [1]FRONT LIR, [2]BACK LIR, [3]LEFT MIR, [4]RIGHT MIR, [5]SONAR, [6]GYRO
 //----Kalman Filter----
 
 //MA filter for the IR sensors only -------------
@@ -49,6 +52,7 @@ float FRONT_LIR[WINDOW_SIZE];
 float BACK_LIR[WINDOW_SIZE];
 float LEFT_MIR[WINDOW_SIZE];
 float RIGHT_MIR[WINDOW_SIZE];
+float SONAR[5];
 float averaged[4] = {0,0,0,0};
 //MA Filter -------------
 
@@ -190,10 +194,15 @@ void loop() {
     //USE MODE 11 TO PRINT FILTERED ULTRASONIC VALUES
     case 11:
     while(1){
+      current_time = millis();
+      if((current_time-previous_time)>= 60 || timer_first_call){
+        previous_time = current_time;        
+        ADC_sensor[5] = usonic_transmit();
+        SensorSignalProcess(5, ADC_sensor[5]); 
 
-      ADC_sensor[5] = usonic_transmit();
-      SensorSignalProcess(5, ADC_sensor[5]); 
-    }
+        timer_first_call = false;
+      }
+    } 
     break;
   }
 }
@@ -232,7 +241,6 @@ float getGyroAngle(){
 
 void SensorSignalProcess(int code, float RawADC) { // find distances using calibration curve equations
   float dist;
-  
   switch(code) {
     case 1:
 
@@ -271,8 +279,8 @@ void SensorSignalProcess(int code, float RawADC) { // find distances using calib
 //    ----KALMAN FILTER
 
 //    ----MA FILTER
-      sum[2] -= FRONT_LIR[index[2]];
-      FRONT_LIR[index[2]] = callibrated_sensor[2];
+      sum[2] -= BACK_LIR[index[2]];
+      BACK_LIR[index[2]] = callibrated_sensor[2];
       sum[2] += callibrated_sensor[2];
       index[2] = (index[2] + 1) % WINDOW_SIZE;
       averaged[2] = sum[2]/WINDOW_SIZE;
@@ -295,8 +303,8 @@ void SensorSignalProcess(int code, float RawADC) { // find distances using calib
 //    ----KALMAN FILTER
 
 //    ----MA FILTER
-      sum[3] -= FRONT_LIR[index[3]];
-      FRONT_LIR[index[3]] = callibrated_sensor[3];
+      sum[3] -= LEFT_MIR[index[3]];
+      LEFT_MIR[index[3]] = callibrated_sensor[3];
       sum[3] += callibrated_sensor[3];
       index[3] = (index[3] + 1) % WINDOW_SIZE;
       averaged[3] = sum[3]/WINDOW_SIZE;
@@ -319,8 +327,8 @@ void SensorSignalProcess(int code, float RawADC) { // find distances using calib
 //    ----KALMAN FILTER
 
 //    ----MA FILTER
-      sum[4] -= FRONT_LIR[index[4]];
-      FRONT_LIR[index[4]] = callibrated_sensor[4];
+      sum[4] -= RIGHT_MIR[index[4]];
+      RIGHT_MIR[index[4]] = callibrated_sensor[4];
       sum[4] += callibrated_sensor[4];
       index[4] = (index[4] + 1) % WINDOW_SIZE;
       averaged[4] = sum[4]/WINDOW_SIZE;
@@ -334,14 +342,22 @@ void SensorSignalProcess(int code, float RawADC) { // find distances using calib
       callibrated_sensor[5] = ultra_centre_offset + (RawADC*.034)/2;
       Serial.print(callibrated_sensor[5]);
       Serial.print(",");
-//    ----KALMAN FILTER
-      float Ultdist = Kalman(callibrated_sensor[5], sensor_past[5], process_noise[5], sensor_noise[5], last_var[5], 5);
-      sensor_past[5] = callibrated_sensor[5];
-//    ----KALMAN FILTER
-//      float Ultdist = Sonarkalman(callibrated_sensor[5]);
+      
+////    ----KALMAN FILTER
+//      float Ultdist = Kalman(callibrated_sensor[5], sensor_past[5], process_noise[5], sensor_noise[5], last_var[5], 5);
+//      sensor_past[5] = callibrated_sensor[5];
+//      float Ultradist = Sonarkalman(callibrated_sensor[5]);
+////    ----KALMAN FILTER
 
-      Serial.println(Ultdist);
-      delay(1/30);
+//    ----MA FILTER
+      sum[5] -= SONAR[index[5]];
+      SONAR[index[5]] = callibrated_sensor[5];
+      sum[5] += callibrated_sensor[5];
+      index[5] = (index[5] + 1) % 5;
+      averaged[5] = sum[5]/5;
+      Serial.println(averaged[5]);
+//    ----MA FILTER
+//      delay(5);
 
     break;
     case 6:
@@ -351,7 +367,7 @@ void SensorSignalProcess(int code, float RawADC) { // find distances using calib
   return dist;
 }
 
-float Sonarkalman(float U){
+/*float Sonarkalman(float U){
   static const float R = 10;
   static const float H = 1.00;
   static float Q = 1;
@@ -362,7 +378,7 @@ float Sonarkalman(float U){
   U_hat += + K*(U-H*U_hat);
   P = (1-K*H)*P+Q;
   return U_hat;
-}
+}*/
 
 float Kalman(float rawdata, float prev_est, float process_noise, float sensor_noise, float last_variance, int sensor){   // Kalman Filter
   float a_priori_est, a_post_est, a_priori_var, kalman_gain;
