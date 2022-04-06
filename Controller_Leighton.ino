@@ -18,31 +18,29 @@ float l = 009.078;
 float R_w = 002.54;
 
 float velocity[3] = {0,0,0};
-float max_velocity[3] = {25,20,15}; // cm/s
+float max_velocity[3] = {25,20,1.5}; // cm/s - rad/s
 float ang_vel[4] = {0,0,0,0};
 
 float motor_speed_Value[4] = {0,0,0,0};
 //----InverseKinematicValues----
 
 //----PIDValues----
-float reference[3] = {20,20,PI};
+float reference[3] = {20,20,0};
 float currentTime, previousTime, elapsedTime;
 float max_velocities[3] = {500, 500, 600};
 float error[3] = {0,0,0};
 float lastError[3] = {0,0,0};
 float rateError[3] = {0,0,0};
 
-const int pid_sample_time = 50; // 50ms sampling period - 20Hz
-int pid_time = 0;
-int prev_pid_time = 0;
+const int pid_sample_time = 25; // 50ms sampling period - 20Hz
 bool pid_first_call = true;
 
 //StraightLine
-float Kp_r[3] = {1.5,6,23};
-float Ki_r[3] = {0.03,0.1,0.5};
+float Kp_r[3] = {1.5,3,1.65};
+float Ki_r[3] = {0.03,0.03,0.05};
 float Kd_r[3] = {0,0,0};
 
-float Pterm, Iterm, Dterm;
+float Pterm[3], Iterm[3], Dterm[3];
 
 float Kp_straight = 200;
 
@@ -59,7 +57,7 @@ int gyroADC = 0;           // read out value of sensor
 float gyroSupplyVoltage = 5;      // supply voltage for gyro 
 float gyroZeroVoltage = 0;         // the value of voltage when gyro is zero  
 float gyroSensitivity = 0.007;      // gyro sensitivity unit is (mv/degree/second) get from datasheet  
-float rotationThreshold = 1.5;      // because of gyro drifting, defining rotation angular velocity less  
+float rotationThreshold = 3;      // because of gyro drifting, defining rotation angular velocity less  
 float angularVelocity = 0;
                                                        // than this value will be ignored 
 int timeElapsed = 0;
@@ -70,7 +68,6 @@ float currentAngle = 0;               // current angle calculated by angular vel
 byte serialRead = 0;
 
 float radiansAngle = 0;
-const float rotation_scale_factor = 0.93; // rotation overshoot correction
 //----Gyro----
 
 //----Ultrasound----
@@ -78,7 +75,7 @@ const int trigPin = 34;
 const int echoPin = 35;
 float Ultraduration;
 float Ultradistance = 0;
-const float ultra_centre_offset = 10.75;
+const float ultra_centre_offset = 10.5;
 
 const int ultra_sampling_time = 50; //50ms sampling time as recommended in data sheet
 int ultra_time;
@@ -148,46 +145,41 @@ void loop() {
 
 void Controller(){
   gyro();
-  //Ultrasound();
-  //IR_Sensors();
+  Ultrasound();
+  IR_Sensors();
   //error[0] = 0;
-  error[0] = reference[0] - Ultradistance;
-  error[1] = 0;//reference[1] - IR_wall_dist;
+  error[0] = 0;//reference[0] - Ultradistance;
+  error[1] = reference[1] - IR_wall_dist;
   error[2] = 0;//reference[2] - radiansAngle;
-  //Serial.println(error[2]);
   PID_Controller();
   inverse_kinematics();
   set_motor_speed();
   set_motors();
-  int out = left_front_motor.readMicroseconds();
-  Serial.println(out);
 }
 
 void PID_Controller(){
 
   currentTime = millis();                
   elapsedTime = (currentTime - previousTime)/1000.0; 
-  
-  pid_time = currentTime - prev_pid_time;
-
-  if(pid_time >= pid_sample_time || (pid_first_call)) { // sampled at 20Hz
+ 
+  if((currentTime - previousTime) >= pid_sample_time || (pid_first_call)) { // sampled at 20Hz
     for (int i = 0; i < 3; i++){
   
-      Pterm = Kp_r[i] * error[i];
-      Iterm += Ki_r[i] * error[i] * elapsedTime;
-      Dterm = Kd_r[i] * ((error[i]-lastError[i])/elapsedTime);
+      Pterm[i] = Kp_r[i] * error[i];
+      Iterm[i] += Ki_r[i] * error[i] * elapsedTime;
+      Dterm[i] = Kd_r[i] * ((error[i]-lastError[i])/elapsedTime);
   
       // anti wind-up
-      if(abs(Iterm) > max_velocity[i]) {
-        if(Iterm < 0) {
-          Iterm = -1 * max_velocity[i];
+      if(abs(Iterm[i]) > max_velocity[i]) {
+        if(Iterm[i] < 0) {
+          Iterm[i] = -1 * max_velocity[i];
         }
         else {
-          Iterm = max_velocity[i];
+          Iterm[i] = max_velocity[i];
         }
       }
   
-      velocity[i] = (Pterm)  +(Iterm) + (Dterm);
+      velocity[i] = Pterm[i] + Iterm[i];// + Dterm[i];
       
       // constrain to max velocity
       if(abs(velocity[i]) > max_velocity[i]) {
@@ -203,23 +195,22 @@ void PID_Controller(){
     }
     pid_first_call = false;
     previousTime = currentTime; 
-    prev_pid_time = pid_time; 
   }
 }
 
 void inverse_kinematics(){
-  ang_vel[0] = (-velocity[0] - velocity[1] + ((L+l)*velocity[2])) / R_w; // left front
-  ang_vel[1] = (-velocity[0] + velocity[1] + ((L+l)*velocity[2])) / R_w; // left rear
-  ang_vel[2] = (velocity[0] + velocity[1] + ((L+l)*velocity[2])) / R_w; // right rear
-  ang_vel[3] = (velocity[0] - velocity[1] + ((L+l)*velocity[2])) / R_w; // right front
+  ang_vel[0] = (-velocity[0] + velocity[1] + ((L+l)*velocity[2])) / R_w; // left front
+  ang_vel[1] = (-velocity[0] - velocity[1] + ((L+l)*velocity[2])) / R_w; // left rear
+  ang_vel[2] = (velocity[0] - velocity[1] + ((L+l)*velocity[2])) / R_w; // right rear
+  ang_vel[3] = (velocity[0] + velocity[1] + ((L+l)*velocity[2])) / R_w; // right front
 }
 
 void set_motors() {
-  //Serial.println(motor_speed_Value[0]);
-  left_front_motor.writeMicroseconds(1500 + motor_speed_Value[0] - correction);
-  left_rear_motor.writeMicroseconds(1500 + motor_speed_Value[1] - correction);
-  right_rear_motor.writeMicroseconds(1500 + motor_speed_Value[2] - correction);
-  right_front_motor.writeMicroseconds(1500 + motor_speed_Value[3] - correction);
+  
+  left_front_motor.writeMicroseconds(1500 + motor_speed_Value[0]);// - correction);
+  left_rear_motor.writeMicroseconds(1500 + motor_speed_Value[1]);// - correction);
+  right_rear_motor.writeMicroseconds(1500 + motor_speed_Value[2]);// - correction);
+  right_front_motor.writeMicroseconds(1500 + motor_speed_Value[3]);// - correction);
 }
 
 void set_motor_speed(){
@@ -229,9 +220,9 @@ void set_motor_speed(){
 }
 
 void Ultrasound(){
-  ultra_time = millis() - prev_ultra_time;
+  ultra_time = millis();
   
-  if(ultra_time >= ultra_sampling_time || (ultra_first_call)) { //16.67Hz
+  if((ultra_time - prev_ultra_time) >= ultra_sampling_time || (ultra_first_call)) { //20Hz
     digitalWrite(trigPin, LOW);
     delayMicroseconds(2);
     digitalWrite(trigPin, HIGH);
@@ -267,13 +258,16 @@ void gyro() { // could be tuned better
   timeElapsed = millis() - prevTime;
   prevTime = millis();
   
-  gyroRate = ((analogRead(gyroPin) - 505.0) * gyroSupplyVoltage) / 1023.0; 
+  gyroRate = ((analogRead(gyroPin) - 505.0) * gyroSupplyVoltage) / 1024.0; 
   angularVelocity = gyroRate / gyroSensitivity; // angular velocity in degrees/second
-  angleChange = angularVelocity * (timeElapsed / 1000.0);
-  currentAngle += angleChange;
-  radiansAngle = currentAngle * (PI/180);
+
+  if(angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold) {
+    angleChange = angularVelocity * (timeElapsed / 1000.0);
+    currentAngle += angleChange;
+    radiansAngle = currentAngle * (PI/180.0);
+  }
   
-  delay(10);
+  delay(5);
 }
 
 double IR_dist(IR code) { // find distances using calibration curve equations
