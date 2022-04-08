@@ -1,3 +1,28 @@
+#include <SoftwareSerial.h>
+
+#define INTERNAL_LED 13
+
+// Serial Data input pin
+#define BLUETOOTH_RX 10
+// Serial Data output pin
+#define BLUETOOTH_TX 11
+// Bluetooth Serial Port
+#define OUTPUTBLUETOOTHMONITOR 1
+volatile int32_t Counter = 1;
+
+SoftwareSerial BluetoothSerial(BLUETOOTH_RX, BLUETOOTH_TX);
+
+void bluetoothSerialOutputMonitor(int32_t Value1, int32_t Value2, int32_t Value3)
+{
+  String Delimiter = ", ";
+  
+  BluetoothSerial.print(Value1, DEC);
+  BluetoothSerial.print(Delimiter);
+  BluetoothSerial.print(Value2, DEC);
+  BluetoothSerial.print(Delimiter);
+  BluetoothSerial.println(Value3, DEC);
+}
+
 // Declare Pins
 const int LEFT_FRONT_LIR = A4; //sensor is attatched on pin A4
 const int LEFT_BACK_LIR = A5; //sensor is attatched on pin A5
@@ -43,7 +68,7 @@ float process_noise[6] = {5,5,5,5,10,1}; //ORDER GOES; [0]FRONT LIR, [1]BACK LIR
 float sensor_noise[6] = {5,5,5,5,50,25}; //ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
 //----Kalman Filter----
 
-//MA filter for the IR sensors only -------------
+//MA filter for the IR + Sonar sensors -------------
 #define WINDOW_SIZE 13
 int index[6] = {0,0,0,0,0,0};//ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
 float value[6] = {0,0,0,0,0,0};//ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
@@ -62,6 +87,8 @@ int raw_lipo;
 
 void setup() {
   Serial.begin(115200); // start serial communication
+  
+  BluetoothSerial.begin(115200);
 
   pinMode(trigPin, OUTPUT);
   pinMode(echoPin, INPUT);
@@ -110,7 +137,7 @@ void loop(){
         Serial.print("   |   ");
         Serial.print("RBM: ");
         Serial.println(ADC_sensor[3]);
-        delay(400);
+        delay(25);
     }
     break;
 
@@ -137,42 +164,59 @@ void loop(){
     }
     break;
 
-    //USE MODE 4 TO PRINT OUT THE RAW AND FILTERED READINGS FOR THE FRONT LEFT LIR SENSOR
+    //USE MODE 4 TO PRINT OUT THE RAW AND FILTERED READINGS FOR THE FRONT LIR SENSOR
     case 4:
       while(1){
         ADC_sensor[0] = analogRead(LEFT_FRONT_LIR); // the read out is a signal from 0-1023 corresponding to 0-5v
-        SensorSignalProcess(1, ADC_sensor[1]);
+        if (ADC_sensor[0] <= 600){
+          SensorSignalProcess(1, ADC_sensor[0]);
+        }
+        bluetoothSerialOutputMonitor(0, ADC_sensor[0], averaged[0]);
       }
     break;
 
-    //USE MODE 5 TO PRINT OUT THE RAW AND FILTERED READINGS FOR THE BACK LEFT LIR SENSOR
+    //USE MODE 5 TO PRINT OUT THE RAW AND FILTERED READINGS FOR THE BACK LIR SENSOR
     case 5:
       while(1){
         ADC_sensor[1] = analogRead(LEFT_BACK_LIR); // the read out is a signal from 0-1023 corresponding to 0-5v
-        SensorSignalProcess(2, ADC_sensor[2]);
+        if (ADC_sensor[1] <=600){
+          SensorSignalProcess(2, ADC_sensor[1]);
+        }
       }
     break;
 
-    //USE MODE 6 TO PRINT OUT THE RAW AND FILTERED READINGS FOR THE BACK LEFT MIR SENSOR
+    //USE MODE 6 TO PRINT OUT THE RAW AND FILTERED READINGS FOR THE LEFT MIR SENSOR
     case 6:
       while(1){
         ADC_sensor[2] = analogRead(LEFT_BACK_MIR); // the read out is a signal from 0-1023 corresponding to 0-5v
-        SensorSignalProcess(3, ADC_sensor[3]);        
+        if (ADC_sensor[2] <=600){
+          SensorSignalProcess(3, ADC_sensor[2]);        
+        }
       }
     break;
 
-    //USE MODE 7 TO PRINT OUT THE RAW AND FILTERED READINGS FOR THE BACK RIGHT MIR SENSOR
+    //USE MODE 7 TO PRINT OUT THE RAW AND FILTERED READINGS FOR THE RIGHT MIR SENSOR
     case 7:
       while(1){
         ADC_sensor[3] = analogRead(RIGHT_BACK_MIR); // the read out is a signal from 0-1023 corresponding to 0-5v
-        SensorSignalProcess(4, ADC_sensor[4]);        
+        if(ADC_sensor[3]<= 600){
+          SensorSignalProcess(4, ADC_sensor[3]);        
+        }
       }
     break;
 
     //USE MODE 8 TO PRINT BOTH LONG RANGE IR FILTERED VALUES AT ONCE
     case 8:
       while(1){
+        ADC_sensor[0] = analogRead(LEFT_FRONT_LIR); // the read out is a signal from 0-1023 corresponding to 0-5v
+        SensorSignalProcess(1, ADC_sensor[0]);
+        ADC_sensor[1] = analogRead(LEFT_BACK_LIR); // the read out is a signal from 0-1023 corresponding to 0-5v
+        SensorSignalProcess(2, ADC_sensor[1]);
 
+        Serial.print(averaged[0]);
+        Serial.print(", ");
+        Serial.println(averaged[1]);
+        
       }
     break;
 
@@ -195,7 +239,7 @@ void loop(){
     while(1){
       current_time = millis();
       if((current_time-previous_time)>= 60 || timer_first_call){
-        previous_time = current_time;        
+        previous_time = current_time;
         ADC_sensor[4] = usonic_transmit();
         SensorSignalProcess(5, ADC_sensor[4]); 
 
@@ -243,15 +287,11 @@ void SensorSignalProcess(int code, float RawADC) { // find distances using calib
   float dist;
   switch(code) {
     case 1:
-
-      dist = 6245.5*pow(RawADC, -1.042);//Callibration for Front MIR
-            
-      Serial.print(dist);
-      Serial.print(",");
+      dist = 5780.3*pow(RawADC, -1.027);//Callibration for Front LIR
       
 //    ----KALMAN FILTER
       callibrated_sensor[0] = Kalman(dist, sensor_past[0], process_noise[0], sensor_noise[0], last_var[0], 1);
-      sensor_past[0] = callibrated_sensor[0];
+//      sensor_past[0] = callibrated_sensor[0];
 //    ----KALMAN FILTER
 
 //    ----MA FILTER
@@ -260,22 +300,21 @@ void SensorSignalProcess(int code, float RawADC) { // find distances using calib
       sum[0] += callibrated_sensor[0];
       index[0] = (index[0] + 1) % WINDOW_SIZE;
       averaged[0] = sum[0]/WINDOW_SIZE;
-      Serial.println(averaged[0]);
+      sensor_past[0] = averaged[0];
 //    ----MA FILTER
+                  
+      Serial.print(dist);
+      Serial.print(",");
+      Serial.println(averaged[0]);
       delay(5);
-
-      
     break;
     case 2:
     
-      dist = 2730.4*pow(RawADC, -.901);//Callibration for Back MIR
+      dist = 4382.9*pow(RawADC, -.984);//Callibration for Back LIR
 
-      Serial.print(dist);
-      Serial.print(",");
-      
 //    ----KALMAN FILTER
       callibrated_sensor[1] = Kalman(dist, sensor_past[1], process_noise[1], sensor_noise[1], last_var[1], 2);
-      sensor_past[1] = callibrated_sensor[1];
+//      sensor_past[1] = callibrated_sensor[1];
 //    ----KALMAN FILTER
 
 //    ----MA FILTER
@@ -284,64 +323,66 @@ void SensorSignalProcess(int code, float RawADC) { // find distances using calib
       sum[1] += callibrated_sensor[1];
       index[1] = (index[1] + 1) % WINDOW_SIZE;
       averaged[1] = sum[1]/WINDOW_SIZE;
-      Serial.println(averaged[1]);
+      sensor_past[1] = averaged[1];
 //    ----MA FILTER
-      delay(5);
 
+      Serial.print(dist);
+      Serial.print(",");
+      Serial.println(averaged[1]);
+      delay(5);
 
     break;
     case 3:
     
-      dist = 2730.4*pow(RawADC, -.901);//Callibration for Left MIR
+      dist = 4382.9*pow(RawADC, -.984);//Callibration for LEFT MIR
 
-      Serial.print(dist);
-      Serial.print(",");
-      
 //    ----KALMAN FILTER
       callibrated_sensor[2] = Kalman(dist, sensor_past[2], process_noise[2], sensor_noise[2], last_var[2], 3);
-      sensor_past[2] = callibrated_sensor[2];
+//      sensor_past[2] = callibrated_sensor[2];
 //    ----KALMAN FILTER
 
 //    ----MA FILTER
-      sum[2] -= LEFT_MIR[index[2]];
-      LEFT_MIR[index[2]] = callibrated_sensor[2];
+      sum[2] -= BACK_LIR[index[2]];
+      BACK_LIR[index[2]] = callibrated_sensor[2];
       sum[2] += callibrated_sensor[2];
       index[2] = (index[2] + 1) % WINDOW_SIZE;
       averaged[2] = sum[2]/WINDOW_SIZE;
-      Serial.println(averaged[2]);
+      sensor_past[2] = averaged[2];
 //    ----MA FILTER
-      delay(5);
 
+      Serial.print(dist);
+      Serial.print(",");
+      Serial.println(averaged[2]);
+      delay(5);
       
     break;
     case 4:
     
-      dist = 2730.4*pow(RawADC, -.901);//Callibration for Right MIR
+      dist = 4382.9*pow(RawADC, -.984);//Callibration for RIGHT MIR
 
-      Serial.print(dist);
-      Serial.print(",");
-      
 //    ----KALMAN FILTER
       callibrated_sensor[3] = Kalman(dist, sensor_past[3], process_noise[3], sensor_noise[3], last_var[3], 4);
       sensor_past[3] = callibrated_sensor[3];
 //    ----KALMAN FILTER
 
 //    ----MA FILTER
-      sum[3] -= RIGHT_MIR[index[3]];
-      RIGHT_MIR[index[3]] = callibrated_sensor[3];
+      sum[3] -= BACK_LIR[index[3]];
+      BACK_LIR[index[3]] = callibrated_sensor[3];
       sum[3] += callibrated_sensor[3];
       index[3] = (index[3] + 1) % WINDOW_SIZE;
       averaged[3] = sum[3]/WINDOW_SIZE;
-      Serial.println(averaged[3]);
+      sensor_past[3] = averaged[3];
 //    ----MA FILTER
+
+      Serial.print(dist);
+      Serial.print(",");
+      Serial.println(averaged[3]);
       delay(5);
 
     break;
     case 5:
 
       callibrated_sensor[4] = ultra_centre_offset + (RawADC*.034)/2;
-      Serial.print(callibrated_sensor[4]);
-      Serial.print(",");
       
 ////    ----KALMAN FILTER
 //      float Ultdist = Kalman(callibrated_sensor[5], sensor_past[5], process_noise[5], sensor_noise[5], last_var[5], 5);
@@ -355,8 +396,10 @@ void SensorSignalProcess(int code, float RawADC) { // find distances using calib
       sum[4] += callibrated_sensor[4];
       index[4] = (index[4] + 1) % 5;
       averaged[4] = sum[4]/5;
-      Serial.println(averaged[4]);
 //    ----MA FILTER
+      Serial.print(callibrated_sensor[4]);
+      Serial.print(",");
+      Serial.println(averaged[4]);
       delay(5);
 
     break;
