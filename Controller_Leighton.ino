@@ -39,7 +39,7 @@ bool pid_first_call = true;
 
 //StraightLine
 float Kp_r[3] = {1,3,1.65};
-float Ki_r[3] = {0.01,0.03,0.05};
+float Ki_r[3] = {0.04,0.06,0.05};
 float Kd_r[3] = {0,0,0};
 
 float Pterm[3], Iterm[3], Dterm[3];
