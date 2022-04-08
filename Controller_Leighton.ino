@@ -124,6 +124,18 @@ float process_noise = 1;
 float sensor_noise = 25;    // Change the value of sensor noise to get different KF performance
 //----IR Kalman Filter----
 
+/*#define WINDOW_SIZE 13
+int index[6] = {0,0,0,0,0,0};//ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
+float value[6] = {0,0,0,0,0,0};//ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
+float SUM[6] = {0,0,0,0,0,0};//ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
+float FRONT_LIR[WINDOW_SIZE];
+float BACK_LIR[WINDOW_SIZE];
+float LEFT_MIR[WINDOW_SIZE];
+float RIGHT_MIR[WINDOW_SIZE];
+float SONAR[5];
+float averaged[6] = {0,0,0,0,0,0};//ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
+//MA Filter -------------*/
+
 
 void setup() {
 pinMode(trigPin, OUTPUT); // Sets the trigPin as an Output
@@ -285,7 +297,19 @@ double IR_dist(IR code) { // find distances using calibration curve equations
       //Serial.println(adc);
       dist = (5780.3)/(pow(adc,1.027));
       est = Kalman(dist, last_est[0], last_var[0], LEFT_FRONT);
-      last_est[0] = est; 
+      last_est[0] = est;
+      
+      /*
+      //MA FILTER
+      SUM[0] -= FRONT_LIR[index[0]];
+      FRONT_LIR[index[0]] = est;
+      SUM[0] += est;
+      index[0] = (index[0] + 1) % WINDOW_SIZE;
+      averaged[0] = SUM[0]/WINDOW_SIZE;
+      est = averaged[0];
+      last_est[0] = averaged[0];
+      //MA FILTER
+      */
       break;
     case LEFT_BACK:
       adc = analogRead(IR_LONG_2);
@@ -293,11 +317,23 @@ double IR_dist(IR code) { // find distances using calibration curve equations
       est = Kalman(dist, last_est[1], last_var[1], LEFT_BACK);
       last_est[1] = est; 
       break;
+      
+      /*
+      //MA FILTER
+      SUM[0] -= FRONT_LIR[index[0]];
+      FRONT_LIR[index[0]] = est;
+      SUM[0] += est;
+      index[0] = (index[0] + 1) % WINDOW_SIZE;
+      averaged[0] = SUM[0]/WINDOW_SIZE;
+      est = averaged[0];
+      last_est[0] = averaged[0];
+      //MA FILTER
+      */
     case BACK_LEFT:
       adc = analogRead(IR_MID_1);
       //dist =
       //est = Kalman(dist, last_est[2], last_var[2], BACK_LEFT);
-      //last_est[2] = est; 
+      //last_est[2] = est;
       break;
     case BACK_RIGHT:
       adc = analogRead(IR_MID_2);
