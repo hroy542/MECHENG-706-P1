@@ -1,10 +1,6 @@
 // SAMPLING FOR ULTRA AND PID - DELAYS MIGHT BE BETTER
 #include <Servo.h>  //Need for Servo pulse output
 
-//#define NO_READ_GYRO  //Uncomment of GYRO is not attached.
-//#define NO_HC-SR04 //Uncomment of HC-SR04 ultrasonic ranging sensor is not attached.
-//#define NO_BATTERY_V_OK //Uncomment of BATTERY_V_OK if you do not care about battery damage.
-
 //State machine states
 enum STATE {
   INITIALISING,
@@ -26,14 +22,13 @@ const byte right_front = 51;
 const int trigPin = 34;
 const int echoPin = 35;
 float Ultraduration;
-const float ultra_centre_offset = 10.5;
+const float ultra_centre_offset = 11.0;
 
-const int ultra_sampling_time = 40; //40ms
-int ultra_time;
-int prev_ultra_time;
-bool ultra_first_call = true;
+//const int ultra_sampling_time = 40; //40ms
+//int ultra_time;
+//int prev_ultra_time;
+//bool ultra_first_call = true;
 //----Ultrasound----
-
 
 //----IR----
 enum IR {
@@ -74,8 +69,8 @@ const float mid_centre_offset = 7.0;
 //----IR Kalman Filter----
 float last_est[4] = {0,0,0,0};
 float last_var[4] = {999,999,999,999};
-float process_noise = 1;
-float sensor_noise = 25;    // Change the value of sensor noise to get different KF performance
+float process_noise = 5;
+float sensor_noise = 5;    // Change the value of sensor noise to get different KF performance
 //----IR Kalman Filter----
 
 //----MA Filter----
@@ -130,7 +125,6 @@ Servo left_front_motor;  // create servo object to control Vex Motor Controller 
 Servo left_rear_motor;  // create servo object to control Vex Motor Controller 29
 Servo right_rear_motor;  // create servo object to control Vex Motor Controller 29
 Servo right_front_motor;  // create servo object to control Vex Motor Controller 29
-Servo turret_motor;
 
 //----InverseKinematicValues----
 float L = 007.620;
@@ -138,7 +132,7 @@ float l = 009.078;
 float R_w = 002.54;
 
 float velocity[3] = {0,0,0};
-float max_velocity[3] = {20,20,1.5}; // cm/s
+float max_velocity[3] = {25,20,1.5}; // cm/s
 float ang_vel[4] = {0,0,0,0};
 
 float motor_speed_Value[4] = {0,0,0,0};
@@ -154,20 +148,18 @@ float rateError[3] = {0,0,0};
 float Pterm[3], Iterm[3], Dterm[3];
 
 //StraightLine
-float Kp_r[3] = {1,3,1.65};
-float Ki_r[3] = {0.01,0.03,0.05};
+float Kp_r[3] = {2,2.5,1.65};
+float Ki_r[3] = {0.018,0.02,0.05};
 float Kd_r[3] = {0,0,0};
 
 float Kp_straight = 80;
 float Kp_turn = 500;
-float Kp_align = 100; // gain for aligning to wall
+float Kp_align = 80; // gain for aligning to wall
 
-const int pid_sample_time = 40; // 40ms sampling period - 25Hz
-bool pid_first_call = true;
+//const int pid_sample_time = 40; // 40ms sampling period - 25Hz
+//bool pid_first_call = true;
 //----PIDValues----
 
-int speed_val = 100;
-int speed_change;
 
 //Serial Pointer
 HardwareSerial *SerialCom;
@@ -175,8 +167,6 @@ HardwareSerial *SerialCom;
 int pos = 0;
 void setup(void)
 {
-  turret_motor.attach(11);
-  pinMode(LED_BUILTIN, OUTPUT);
 
   // The Trigger pin will tell the sensor to range find
   pinMode(trigPin, OUTPUT);
@@ -186,10 +176,6 @@ void setup(void)
   // Setup the Serial port and pointer, the pointer allows switching the debug info through the USB port(Serial) or Bluetooth port(Serial1) with ease.
   SerialCom = &Serial;
   SerialCom->begin(115200);
-  SerialCom->println("MECHENG706_Base_Code_25/01/2018");
-  delay(1000);
-  SerialCom->println("Setup....");
-
 }
 
 void loop(void) //main loop
@@ -222,31 +208,6 @@ STATE initialising() {
 
 STATE running() {
 
-  static unsigned long previous_millis;
-
-  read_serial_command();
-  fast_flash_double_LED_builtin();
-
-  if (millis() - previous_millis > 500) {  //Arduino style 500ms timed execution statement
-    previous_millis = millis();
-
-    SerialCom->println("RUNNING---------");
-    speed_change_smooth();
-    Analog_Range_A4();
-  }
-
-#ifndef NO_READ_GYRO
-    GYRO_reading();
-#endif
-
-#ifndef NO_HC-SR04
-    HC_SR04_range();
-#endif
-
-#ifndef NO_BATTERY_V_OK
-    if (!is_battery_voltage_OK()) return STOPPED;
-#endif
-
   find_corner();
 
   return RUNNING;
@@ -254,251 +215,9 @@ STATE running() {
 
 //Stop of Lipo Battery voltage is too low, to protect Battery
 STATE stopped() {
-  static byte counter_lipo_voltage_ok;
-  static unsigned long previous_millis;
-  int Lipo_level_cal;
-  disable_motors();
-  slow_flash_LED_builtin();
-
-  if (millis() - previous_millis > 500) { //print massage every 500ms
-    previous_millis = millis();
-    SerialCom->println("STOPPED---------");
-
-
-#ifndef NO_BATTERY_V_OK
-    //500ms timed if statement to check lipo and output speed settings
-    if (is_battery_voltage_OK()) {
-      SerialCom->print("Lipo OK waiting of voltage Counter 10 < ");
-      SerialCom->println(counter_lipo_voltage_ok);
-      counter_lipo_voltage_ok++;
-      if (counter_lipo_voltage_ok > 10) { //Making sure lipo voltage is stable
-        counter_lipo_voltage_ok = 0;
-        enable_motors();
-        SerialCom->println("Lipo OK returning to RUN STATE");
-        return RUNNING;
-      }
-    } else
-    {
-      counter_lipo_voltage_ok = 0;
-    }
-#endif
-  }
-  return STOPPED;
-}
-
-void fast_flash_double_LED_builtin()
-{
-  static byte indexer = 0;
-  static unsigned long fast_flash_millis;
-  if (millis() > fast_flash_millis) {
-    indexer++;
-    if (indexer > 4) {
-      fast_flash_millis = millis() + 700;
-      digitalWrite(LED_BUILTIN, LOW);
-      indexer = 0;
-    } else {
-      fast_flash_millis = millis() + 100;
-      digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
-    }
-  }
-}
-
-void slow_flash_LED_builtin()
-{
-  static unsigned long slow_flash_millis;
-  if (millis() - slow_flash_millis > 2000) {
-    slow_flash_millis = millis();
-    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
-  }
-}
-
-void speed_change_smooth()
-{
-  speed_val += speed_change;
-  if (speed_val > 1000)
-    speed_val = 1000;
-  speed_change = 0;
-}
-
-#ifndef NO_BATTERY_V_OK
-boolean is_battery_voltage_OK()
-{
-  static byte Low_voltage_counter;
-  static unsigned long previous_millis;
-
-  int Lipo_level_cal;
-  int raw_lipo;
-  //the voltage of a LiPo cell depends on its chemistry and varies from about 3.5V (discharged) = 717(3.5V Min) https://oscarliang.com/lipo-battery-guide/
-  //to about 4.20-4.25V (fully charged) = 860(4.2V Max)
-  //Lipo Cell voltage should never go below 3V, So 3.5V is a safety factor.
-  raw_lipo = analogRead(A0);
-  Lipo_level_cal = (raw_lipo - 717);
-  Lipo_level_cal = Lipo_level_cal * 100;
-  Lipo_level_cal = Lipo_level_cal / 143;
-
-  if (Lipo_level_cal > 0 && Lipo_level_cal < 160) {
-    previous_millis = millis();
-    SerialCom->print("Lipo level:");
-    SerialCom->print(Lipo_level_cal);
-    SerialCom->print("%");
-    // SerialCom->print(" : Raw Lipo:");
-    // SerialCom->println(raw_lipo);
-    SerialCom->println("");
-    Low_voltage_counter = 0;
-    return true;
-  } else {
-    if (Lipo_level_cal < 0)
-      SerialCom->println("Lipo is Disconnected or Power Switch is turned OFF!!!");
-    else if (Lipo_level_cal > 160)
-      SerialCom->println("!Lipo is Overchanged!!!");
-    else {
-      SerialCom->println("Lipo voltage too LOW, any lower and the lipo with be damaged");
-      SerialCom->print("Please Re-charge Lipo:");
-      SerialCom->print(Lipo_level_cal);
-      SerialCom->println("%");
-    }
-
-    Low_voltage_counter++;
-    if (Low_voltage_counter > 5)
-      return false;
-    else
-      return true;
-  }
 
 }
-#endif
 
-#ifndef NO_HC-SR04
-void HC_SR04_range()
-{
-  unsigned long t1;
-  unsigned long t2;
-  unsigned long pulse_width;
-  float cm;
-
-  // Hold the trigger pin high for at least 10 us
-  digitalWrite(trigPin, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(trigPin, LOW);
-
-  // Wait for pulse on echo pin
-  t1 = micros();
-  while ( digitalRead(echoPin) == 0 ) {
-    t2 = micros();
-    pulse_width = t2 - t1;
-    if ( pulse_width > (MAX_DIST + 1000)) {
-      SerialCom->println("HC-SR04: NOT found");
-      return;
-    }
-  }
-
-  // Measure how long the echo pin was held high (pulse width)
-  // Note: the micros() counter will overflow after ~70 min
-
-  t1 = micros();
-  while ( digitalRead(echoPin) == 1)
-  {
-    t2 = micros();
-    pulse_width = t2 - t1;
-    if ( pulse_width > (MAX_DIST + 1000) ) {
-      SerialCom->println("HC-SR04: Out of range");
-      return;
-    }
-  }
-
-  t2 = micros();
-  pulse_width = t2 - t1;
-
-  // Calculate distance in centimeters and inches. The constants
-  // are found in the datasheet, and calculated from the assumed speed
-  //of sound in air at sea level (~340 m/s).
-  cm = 10.5 + pulse_width / 58.0;
-
-  // Print out results
-  if ( pulse_width > MAX_DIST ) {
-    SerialCom->println("HC-SR04: Out of range");
-  } else {
-    SerialCom->print("HC-SR04:");
-    SerialCom->print(cm);
-    SerialCom->println("cm");
-  }
-}
-#endif
-
-void Analog_Range_A4()
-{
-  SerialCom->print("Analog Range A4:");
-  SerialCom->println(analogRead(A4));
-}
-
-#ifndef NO_READ_GYRO
-void GYRO_reading()
-{
-  SerialCom->print("GYRO A8:");
-  SerialCom->println(analogRead(gyroPin));
-}
-#endif
-
-//Serial command pasing
-void read_serial_command()
-{
-  if (SerialCom->available()) {
-    char val = SerialCom->read();
-    SerialCom->print("Speed:");
-    SerialCom->print(speed_val);
-    SerialCom->print(" ms ");
-
-    //Perform an action depending on the command
-    switch (val) {
-      case 'w'://Move Forward
-      case 'W':
-        //forward (100);
-        SerialCom->println("Forward");
-        break;
-      case 's'://Move Backwards
-      case 'S':
-        //reverse (100);
-        SerialCom->println("Backwards");
-        break;
-      case 'q'://Turn Left
-      case 'Q':
-        //strafe_left(100);
-        SerialCom->println("Strafe Left");
-        break;
-      case 'e'://Turn Right
-      case 'E':
-        //strafe_right(100);
-        SerialCom->println("Strafe Right");
-        break;
-      case 'a'://Turn Right
-      case 'A':
-        ccw(100);
-        SerialCom->println("ccw");
-        break;
-      case 'd'://Turn Right
-      case 'D':
-        cw(100);
-        SerialCom->println("cw");
-        break;
-      case '-'://Turn Right
-      case '_':
-        speed_change = -100;
-        SerialCom->println("-100");
-        break;
-      case '=':
-      case '+':
-        speed_change = 100;
-        SerialCom->println("+");
-        break;
-      default:
-        stop();
-        SerialCom->println("stop");
-        break;
-    }
-
-  }
-
-}
 
 //----------------------Motor moments------------------------
 //The Vex Motor Controller 29 use Servo Control signals to determine speed and direction, with 0 degrees meaning neutral https://en.wikipedia.org/wiki/Servo_control
@@ -566,8 +285,35 @@ void find_corner() { // Drives robot to TL or BR corner
 //    corner_short();
 //    SHORT = false;
 //  }
+//
+//  disable_motors();
 
-  delay(500);
+
+
+
+//  driveXYZ(20,20,0);
+//
+//  delay(500);
+//
+//  driveXYZ(20,30,0);
+//
+//  delay(500);
+//
+//  driveXYZ(50,30,0);
+//
+//  delay(500);
+//
+//  driveXYZ(50,20,0);
+//
+//  delay(500);
+//  
+//  driveXYZ(0,0,-PI/2);
+//
+//  delay(500);
+//
+//  driveXYZ(0,0,PI/2);
+//
+//  delay(500);
 
   // change FSM state - in full code
 }
@@ -577,7 +323,7 @@ void orient() { // initial orienting of robot parallel to wall using IR
   
   // while robot is not parallel to wall
   while(!parallel) {
-    ccw(100); // rotate CCW
+    ccw(90); // rotate CCW
     
     // get distances for both IRs
     ir1_dist = IR_dist(LEFT_FRONT);
@@ -611,22 +357,26 @@ void orient() { // initial orienting of robot parallel to wall using IR
 void find_side() { // determine whether on short or long side of rectangle
   float ultra_dist;
   
-  rotate(PI); // rotate robot to see other wall
+  driveXYZ(0,0,PI); // rotate robot to see other wall
+
+  delay(100);
+
+  align_back();
 
   delay(100);
 
   ultra_dist = Ultrasound();
-  ultra_first_call = true;
+  //ultra_first_call = true;
 
-  // if ultrasonic detects > 160 cm - robot on long side
-  if(ultra_dist > 160) {
-    LONG = true;
-    SHORT = false;
-  }
-  // if ultrasonic detects < 130 cm - robot on short side
-  else if(ultra_dist < 130) {
-    SHORT = true;
+  // if ultrasonic detects > 160 cm - robot on short side
+  if(ultra_dist > 150) {
     LONG = false;
+    SHORT = true;
+  }
+  // if ultrasonic detects < 130 cm - robot on long side
+  else if(ultra_dist < 130) {
+    SHORT = false;
+    LONG = true;
   }
 
   return;
@@ -635,13 +385,13 @@ void find_side() { // determine whether on short or long side of rectangle
 void corner_long() { // drives robot to corner if on long side
   float ultra_dist;
   
-  rotate(-PI/2); // rotate 90 degrees CCW
+  driveXYZ(0,0,-PI/2); // rotate 90 degrees CCW
   //drive(0, 0, -PI/2);
 
   delay(100);
 
   ultra_dist = Ultrasound(); // read distance from wall
-  ultra_first_call = true;
+  //ultra_first_call = true;
   
   driveXYZ(ultra_dist, 15, 0); // strafe left until 15cm from wall
   delay(100);
@@ -666,7 +416,7 @@ void corner_short() { // drives robot to corner if on short side
   
 void align_controller() { // uses long range IRs with gain to align robot to wall - P CONTROLLER
   float ir1_dist, ir2_dist, diff, power;
-  float alignment_threshold = 0.2;
+  float alignment_threshold = 0.3;
 
   // read long range IRs
   ir1_dist = IR_dist(LEFT_FRONT);
@@ -699,7 +449,7 @@ void align_controller() { // uses long range IRs with gain to align robot to wal
 
 void align() { // uses long range IRs to align robot to wall - NO CONTROLLER
   float ir1_dist, ir2_dist;
-  float alignment_threshold = 0.2;
+  float alignment_threshold = 0.3;
 
   // read long range IRs
   ir1_dist = IR_dist(LEFT_FRONT);
@@ -712,10 +462,10 @@ void align() { // uses long range IRs to align robot to wall - NO CONTROLLER
 
   // determine direction of rotation for correction
   if(ir1_dist > ir2_dist) {
-    ccw(80);
+    ccw(70);
   }
   else {
-    cw(80);
+    cw(70);
   }
 
   // update IR distances until aligned
@@ -732,7 +482,7 @@ void align() { // uses long range IRs to align robot to wall - NO CONTROLLER
 
 void align_back() { //uses mid range IRs to align to wall - NO CONTROLLER
   float ir1_dist, ir2_dist;
-  float alignment_threshold = 0.1;
+  float alignment_threshold = 0.25;
 
   // read long range IRs
   ir1_dist = IR_dist(BACK_LEFT);
@@ -789,8 +539,8 @@ void driveXYZ(float x, float y, float z) { // Drives robot straight in x, y, and
   stop(); // stop motors
   
   // reset flags
-  ultra_first_call = true;
-  pid_first_call = true;
+  //ultra_first_call = true;
+  //pid_first_call = true;
   ignore_x = false;
   ignore_y = false;
   ignore_z = false;
@@ -858,15 +608,22 @@ void cw(int speedval)
 
 void Controller(){
   IR_Sensors(); // gets info from IRs including wall dist and drift correction factor
+  correction = Kp_straight * IR_diff;
 
-  if(!ignore_x) { // if ignore y flag if false - update y error
-    error[0] = reference[0] - Ultrasound(); // doesn't switch to IRs
+  if(!ignore_x) {
+    if(reference[0] == 185 && IR_mid_dist < 30) { // switch to mid range IRs for x direction control when reversing 15cm away
+      error[0] = IR_mid_dist - 15.0;
+    }
+    else {
+      error[0] = reference[0] - Ultrasound();
+    }
   }
-  if(!ignore_y) { // if ignore y flag if false - update y error
+  if(!ignore_y) { // if ignore y flag is false - update y error
     error[1] = reference[1] - IR_wall_dist;
   }
   if(!ignore_z) {
     error[2] = reference[2] - gyroAngle();
+    correction = 0;
   }
 
   PID_Controller();
@@ -874,13 +631,14 @@ void Controller(){
   set_motor_speed();
   set_motors();
 
-  // exit loop
+  // exit condition
   if((abs(error[0]) + abs(error[1])) < 3.0 && (ignore_z)) { // XY exit condition
     DRIVING = false;
     return;
   }
   else if(abs(error[2]) < 0.1 && (!ignore_z)) { // turning exit condition
     DRIVING = false;
+    currentAngle = 0;
     return;
   }
 
@@ -891,49 +649,39 @@ void PID_Controller(){
 
   currentTime = millis();                
   elapsedTime = (currentTime - previousTime)/1000.0; 
-
-  if((currentTime - previousTime) >= pid_sample_time || (pid_first_call)) { // sampling
-    
-    for (int i = 0; i < 3; i++) {
+ 
+  //if((currentTime - previousTime) >= pid_sample_time || (pid_first_call)) { // sampled at 20Hz
+    for (int i = 0; i < 3; i++){
+  
       Pterm[i] = Kp_r[i] * error[i];
       Iterm[i] += Ki_r[i] * error[i] * elapsedTime;
-      Dterm[i] = Kd_r[i] * ((error[i]-lastError[i])/elapsedTime);
-  
-      // anti wind-up
-      if(abs(Iterm[i]) > max_velocity[i]) {
-        if(Iterm[i] < 0) {
-          Iterm[i] = -1 * max_velocity[i];
+      Dterm[i] = Kd_r[i] * ((error[i] - lastError[i]) / elapsedTime);
+
+      // anti wind-up - Iterm and Pterm (More powerful anti windup - constrains total control effort to always be <= max velocity)
+      if(abs(Pterm[i]) > max_velocity[i]) {
+        
+        // constrains Iterm such that Pterm + Iterm <= maximum velocity
+        if(Pterm[i] < 0) {
+          Pterm[i] = (-1 * max_velocity[i]);
         }
         else {
-          Iterm[i] = max_velocity[i];
+          Pterm[i] = max_velocity[i];
         }
       }
-
-//      // anti wind-up - Iterm and Pterm (More powerful anti windup - constrains total control effort to always be <= max velocity)
-//      if(abs(Pterm[i]) > max_velocity[i]) {
-//        
-//        // constrains Iterm such that Pterm + Iterm <= maximum velocity
-//        if(Pterm[i] < 0) {
-//          Pterm[i] = (-1 * max_velocity[i]);
-//        }
-//        else {
-//          Pterm[i] = max_velocity[i];
-//        }
-//      }
-//      if(abs(Iterm[i] + Pterm[i]) > max_velocity[i]) {
-//        
-//        // constrains Iterm such that Pterm + Iterm <= maximum velocity
-//        if((Iterm[i] + Pterm[i]) < 0) {
-//          Iterm[i] = (-1 * max_velocity[i]) - Pterm[i];
-//        }
-//        else {
-//          Iterm[i] = max_velocity[i] - Pterm[i];
-//        }
-//      }
+      if(abs(Iterm[i] + Pterm[i]) > max_velocity[i]) {
+        
+        // constrains Iterm such that Pterm + Iterm <= maximum velocity
+        if((Iterm[i] + Pterm[i]) < 0) {
+          Iterm[i] = (-1 * max_velocity[i]) - Pterm[i];
+        }
+        else {
+          Iterm[i] = max_velocity[i] - Pterm[i];
+        }
+      }
   
       velocity[i] = Pterm[i] + Iterm[i] + Dterm[i];
       
-      // constrain to max velocity
+      // constrain to max velocity - just to ensure velocity <= maximum velocity
       if(abs(velocity[i]) > max_velocity[i]) {
         if(velocity[i] < 0) {
           velocity [i] = -1 * max_velocity[i];
@@ -942,14 +690,14 @@ void PID_Controller(){
           velocity [i] = max_velocity[i];
         }
       }
-   
+          
       lastError[i] = error[i];                                                
     }
-    
-    pid_first_call = false;
+    //pid_first_call = false;
     previousTime = currentTime; 
-  }
+  //}
 }
+
 
 void inverse_kinematics(){
   ang_vel[0] = (-velocity[0] + velocity[1] + ((L+l)*velocity[2])) / R_w; // left front
@@ -991,10 +739,10 @@ float gyroAngle() { // BASIC FOR TESTING - WILL LIKELY REPLACE WITH TURNING CONT
 }
 
 float Ultrasound() {
-  static float Ultradistance;
-  ultra_time = millis() - prev_ultra_time;
+  float Ultradistance;
+  //ultra_time = millis() - prev_ultra_time;
   
-  if(ultra_time >= ultra_sampling_time || (ultra_first_call)) { //20Hz
+  //if(ultra_time >= ultra_sampling_time || (ultra_first_call)) { //20Hz
     digitalWrite(trigPin, LOW);
     delayMicroseconds(2);
     digitalWrite(trigPin, HIGH);
@@ -1005,10 +753,10 @@ float Ultrasound() {
     // Calculating the distance from robot centre
     Ultradistance = ultra_centre_offset + (Ultraduration * 0.034 / 2);
 
-    prev_ultra_time = ultra_time;
+    //prev_ultra_time = ultra_time;
 
-    ultra_first_call = false;
-  }
+    //ultra_first_call = false;
+  //}
   
   return Ultradistance;
 }
@@ -1017,24 +765,27 @@ void IR_Sensors(){
   // Get distances from left side of robot to wall
   IR_LONG_1_DIST = IR_dist(LEFT_FRONT);
   IR_LONG_2_DIST = IR_dist(LEFT_BACK);
+
+  IR_MID_1_DIST = IR_dist(BACK_LEFT);
+  IR_MID_2_DIST = IR_dist(BACK_RIGHT);
   
   IR_wall_dist = long_centre_offset + (0.37 * IR_LONG_1_DIST + 0.63 * IR_LONG_2_DIST); // distance of centre of robot to wall
   IR_diff = IR_LONG_1_DIST - IR_LONG_2_DIST; // Difference between long range IRs
-  IR_Angle = atan((IR_diff/IR_Between_Dist));
-  correction = Kp_straight * IR_diff;
+  //IR_Angle = atan((IR_diff/IR_Between_Dist));
+  
+  IR_mid_dist = mid_centre_offset + ((IR_MID_1_DIST + IR_MID_2_DIST) / 2);
+  IR_mid_diff = IR_MID_1_DIST - IR_MID_2_DIST;
 }
   
-double IR_dist(IR code) { // find distances using calibration curve equations
-  double est, dist;
+float IR_dist(IR code) { // find distances using calibration curve equations
+  float est, dist;
   int adc;
   
   switch(code) {
     case LEFT_FRONT:
       adc = analogRead(IR_LONG_1);
-      //Serial.println(adc);
       dist = (5780.3)/(pow(adc,1.027));
       est = Kalman(dist, last_est[0], last_var[0], LEFT_FRONT);
-      last_est[0] = est;
       
       //MA FILTER
       SUM[0] -= FRONT_LIR[index[0]];
@@ -1051,8 +802,6 @@ double IR_dist(IR code) { // find distances using calibration curve equations
       adc = analogRead(IR_LONG_2);
       dist = (4382.9)/(pow(adc,0.984));
       est = Kalman(dist, last_est[1], last_var[1], LEFT_BACK);
-      last_est[1] = est; 
-      break;
       
       //MA FILTER
       SUM[1] -= BACK_LIR[index[1]];
@@ -1069,11 +818,10 @@ double IR_dist(IR code) { // find distances using calibration curve equations
       adc = analogRead(IR_MID_1);
       dist = (3730.6)/(pow(adc,1.082));
       est = Kalman(dist, last_est[2], last_var[2], BACK_LEFT);
-      last_est[2] = est;
 
       //MA FILTER
-      SUM[2] -= FRONT_LIR[index[2]];
-      FRONT_LIR[index[2]] = est;
+      SUM[2] -= LEFT_MIR[index[2]];
+      LEFT_MIR[index[2]] = est;
       SUM[2] += est;
       index[2] = (index[2] + 1) % WINDOW_SIZE;
       averaged[2] = SUM[2]/WINDOW_SIZE;
@@ -1086,14 +834,13 @@ double IR_dist(IR code) { // find distances using calibration curve equations
       adc = analogRead(IR_MID_2);
       dist = (3491.3)/(pow(adc,1.069));
       est = Kalman(dist, last_est[3], last_var[3], BACK_RIGHT);
-      last_est[3] = est; 
 
       //MA FILTER
-      SUM[3] -= FRONT_LIR[index[3]];
-      FRONT_LIR[index[3]] = est;
+      SUM[3] -= RIGHT_MIR[index[3]];
+      RIGHT_MIR[index[3]] = est;
       SUM[3] += est;
       index[3] = (index[3] + 1) % WINDOW_SIZE;
-      averaged[2] = SUM[3]/WINDOW_SIZE;
+      averaged[3] = SUM[3]/WINDOW_SIZE;
       est = averaged[3];
       last_est[3] = averaged[3];
       //MA FILTER
@@ -1105,9 +852,10 @@ double IR_dist(IR code) { // find distances using calibration curve equations
       
   return est;
 }
+
 // Kalman Filter for IR sensors
-double Kalman(double rawdata, double prev_est, double last_variance, IR code) { 
-  double a_priori_est, a_post_est, a_priori_var, a_post_var, kalman_gain;
+float Kalman(float rawdata, float prev_est, float last_variance, IR code) { 
+  float a_priori_est, a_post_est, a_priori_var, a_post_var, kalman_gain;
 
   a_priori_est = prev_est;  
   a_priori_var = last_variance + process_noise; 
