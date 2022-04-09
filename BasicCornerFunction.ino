@@ -85,11 +85,24 @@ float process_noise = 1;
 float sensor_noise = 25;    // Change the value of sensor noise to get different KF performance
 //----IR Kalman Filter----
 
+//----MA Filter----
+#define WINDOW_SIZE 13
+int index[6] = {0,0,0,0,0,0};//ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
+float value[6] = {0,0,0,0,0,0};//ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
+float SUM[6] = {0,0,0,0,0,0};//ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
+float FRONT_LIR[WINDOW_SIZE];
+float BACK_LIR[WINDOW_SIZE];
+float LEFT_MIR[WINDOW_SIZE];
+float RIGHT_MIR[WINDOW_SIZE];
+float SONAR[5];
+float averaged[6] = {0,0,0,0,0,0};//ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
+//----MA Filter----
+
 //----Gyro----
 const int gyroPin = A8;           //define the pin that gyro is connected  
 int gyroADC = 0;           // read out value of sensor  
 float gyroSupplyVoltage = 5;      // supply voltage for gyro 
-const float gyroMiddle = 505;
+const float gyroMiddle = 505; // middle adc value of gyro
 float gyroSensitivity = 0.007;      // gyro sensitivity unit is (mv/degree/second) get from datasheet  
 float rotationThreshold = 3;      // because of gyro drifting, defining rotation angular velocity less  
 float angularVelocity = 0;
@@ -143,7 +156,6 @@ float motor_speed_Value[4] = {0,0,0,0};
 //----PIDValues----
 float reference[3] = {0,0,0};
 float currentTime, previousTime, elapsedTime;
-float max_velocities[3] = {500, 500, 600};
 float error[3] = {0,0,0};
 float lastError[3] = {0,0,0};
 float rateError[3] = {0,0,0};
@@ -152,16 +164,10 @@ float Pterm[3], Iterm[3], Dterm[3];
 
 //StraightLine
 float Kp_r[3] = {1,3,1.65};
-float Ki_r[3] = {0.04,0.06,0.05};
+float Ki_r[3] = {0.01,0.03,0.05};
 float Kd_r[3] = {0,0,0};
 
 float Kp_straight = 80;
-
-//Turning
-float Kp_t[3] = {0,0,3};
-float Ki_t[3] = {0,0,0.05};
-float Kd_t[3] = {0,0,0.5};
-
 float Kp_turn = 500;
 
 const int pid_sample_time = 40; // 40ms sampling period - 25Hz
@@ -601,7 +607,7 @@ void orient() { // initial orienting of robot parallel to wall using IR
       // if ratio is ~1 (i.e. nearly parallel) stop
       if(ratio >= 0.95) {
         stop();
-	      delay(100);
+        delay(100);
        
         align(); // align to ensure fully parallel
         parallel = true; 
@@ -889,7 +895,7 @@ void Controller(){
     return;
   }
 
-  delay(10);
+  delay(20);
 }
 
 void PID_Controller(){
@@ -914,7 +920,17 @@ void PID_Controller(){
         }
       }
 
-//      // anti wind-up - Iterm and Pterm (More powerful anti windup - constrains total control effort)
+//      // anti wind-up - Iterm and Pterm (More powerful anti windup - constrains total control effort to always be <= max velocity)
+//      if(abs(Pterm[i]) > max_velocity[i]) {
+//        
+//        // constrains Iterm such that Pterm + Iterm <= maximum velocity
+//        if(Pterm[i] < 0) {
+//          Pterm[i] = (-1 * max_velocity[i]);
+//        }
+//        else {
+//          Pterm[i] = max_velocity[i];
+//        }
+//      }
 //      if(abs(Iterm[i] + Pterm[i]) > max_velocity[i]) {
 //        
 //        // constrains Iterm such that Pterm + Iterm <= maximum velocity
@@ -1030,12 +1046,34 @@ double IR_dist(IR code) { // find distances using calibration curve equations
       dist = (5780.3)/(pow(adc,1.027));
       est = Kalman(dist, last_est[0], last_var[0], LEFT_FRONT);
       last_est[0] = est; 
+
+      //MA FILTER
+      SUM[0] -= FRONT_LIR[index[0]];
+      FRONT_LIR[index[0]] = est;
+      SUM[0] += est;
+      index[0] = (index[0] + 1) % WINDOW_SIZE;
+      averaged[0] = SUM[0]/WINDOW_SIZE;
+      est = averaged[0];
+      last_est[0] = averaged[0];
+      //MA FILTER
+      
       break;
     case LEFT_BACK:
       adc = analogRead(IR_LONG_2);
       dist = (4382.9)/(pow(adc,0.984));
       est = Kalman(dist, last_est[1], last_var[1], LEFT_BACK);
       last_est[1] = est; 
+
+      //MA FILTER
+      SUM[1] -= BACK_LIR[index[1]];
+      BACK_LIR[index[1]] = est;
+      SUM[1] += est;
+      index[1] = (index[1] + 1) % WINDOW_SIZE;
+      averaged[1] = SUM[1]/WINDOW_SIZE;
+      est = averaged[1];
+      last_est[1] = averaged[1];
+      //MA FILTER
+      
       break;
     case BACK_LEFT:
       adc = analogRead(IR_MID_1);
