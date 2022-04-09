@@ -2,6 +2,7 @@
 // REQUIRES DECENTLY ACCURATE GYRO - DOESNT NEED TO BE PERFECT (CAN ALIGN PERPENDICULAR USING IRS) 
 
 #include <Servo.h>  //Need for Servo pulse output
+#include <SoftwareSerial.h>
 
 //#define NO_READ_GYRO  //Uncomment of GYRO is not attached.
 //#define NO_HC-SR04 //Uncomment of HC-SR04 ultrasonic ranging sensor is not attached.
@@ -38,19 +39,30 @@ const byte left_rear = 47;
 const byte right_rear = 50;
 const byte right_front = 51;
 
+//----Bluetooth Comms----
+#define BLUETOOTH_RX 10
+#define BLUETOOTH_TX 11
+#define STARTUP_DELAY 5 // Seconds
+#define LOOP_DELAY 100 // miliseconds
+#define SAMPLE_DELAY 10 // miliseconds
+//change serial output
+#define OUTPUTMONITOR 0 
+#define OUTPUTPLOTTER 0
+#define OUTPUTBLUETOOTHMONITOR 1
+volatile int32_t Counter = 1;
+SoftwareSerial BluetoothSerial(BLUETOOTH_RX, BLUETOOTH_TX);
+//----Bluetooth Comms----
 
 //----Ultrasound----
 const int trigPin = 34;
 const int echoPin = 35;
 float Ultraduration;
 const float ultra_centre_offset = 10.75;
-
 const int ultra_sampling_time = 50; //50ms sampling time as recommended in data sheet
 int ultra_time;
 int prev_ultra_time;
 bool ultra_first_call = true;
 //----Ultrasound----
-
 
 //----IR----
 enum IR {
@@ -275,16 +287,16 @@ STATE running() {
     case FORWARD: //Lipo Battery Volage OK
       running_state =  forward();
       break;
-    case REVERSE: //Stop of Lipo Battery voltage is too low, to protect Battery
+    case REVERSE:
       running_state =  reverse();
       break;
-    case STRAFE: //Stop of Lipo Battery voltage is too low, to protect Battery
+    case STRAFE:
       running_state = strafe();
       break;
-    case TURN: //Stop of Lipo Battery voltage is too low, to protect Battery
+    case TURN:
       running_state =  turn();
       break;
-    case END: //Stop of Lipo Battery voltage is too low, to protect Battery
+    case END:
       running_state =  complete();
       break;
     //----DRIVING COMPONENT----
@@ -301,7 +313,7 @@ STATE stopped() {
   disable_motors();
   slow_flash_LED_builtin();
 
-  if (millis() - previous_millis > 500) { //print massage every 500ms
+  if (millis() - previous_millis > 500) { //print message every 500ms
     previous_millis = millis();
     SerialCom->println("STOPPED---------");
 
@@ -1080,5 +1092,60 @@ double Kalman(double rawdata, double prev_est){   // Kalman Filter
   a_post_var = (1- kalman_gain)*a_priori_var;
   last_var = a_post_var;
   return a_post_est;
+}
+
+//---------------Functions for Bluetooth Comms-----------------------------------
+void serialOutputMonitor(int32_t Value1, int32_t Value2, int32_t Value3)
+{
+  String Delimiter = ", ";
+  //add localisation output here:
+//  BluetoothSerial.print(Value1, DEC);
+//  BluetoothSerial.print(Delimiter);
+//  BluetoothSerial.print(Value2, DEC);
+//  BluetoothSerial.print(Delimiter);
+//  BluetoothSerial.println(Value3, DEC);
+}
+
+void serialOutputPlotter(int32_t Value1, int32_t Value2, int32_t Value3)
+{
+  String Delimiter = ", ";
+  //add localisation output here:
+//  BluetoothSerial.print(Value1, DEC);
+//  BluetoothSerial.print(Delimiter);
+//  BluetoothSerial.print(Value2, DEC);
+//  BluetoothSerial.print(Delimiter);
+//  BluetoothSerial.println(Value3, DEC);
+}
+
+void bluetoothSerialOutputMonitor(int32_t Value1, int32_t Value2, int32_t Value3)
+{
+  String Delimiter = ", ";
+  //add localisation output here:
+//  BluetoothSerial.print(Value1, DEC);
+//  BluetoothSerial.print(Delimiter);
+//  BluetoothSerial.print(Value2, DEC);
+//  BluetoothSerial.print(Delimiter);
+//  BluetoothSerial.println(Value3, DEC);
+}
+
+void serialOutput(int32_t Value1, int32_t Value2, int32_t Value3)
+{
+  if (OUTPUTMONITOR)
+  {
+    //add localisation output here:
+    //serialOutputMonitor(Value1, Value2, Value3);
+  }
+
+  if (OUTPUTPLOTTER)
+  {
+    //add localisation output here:
+    //serialOutputMonitor(Value1, Value2, Value3);
+  }
+
+  if (OUTPUTBLUETOOTHMONITOR)
+  {
+    //add localisation output here:
+    //serialOutputMonitor(Value1, Value2, Value3);
+  }
 }
 //----WRITTEN HELPER FUNCTIONS----
