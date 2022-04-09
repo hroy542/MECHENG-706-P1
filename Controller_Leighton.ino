@@ -48,10 +48,8 @@ float Kp_straight = 50;
 
 //----Gyro----
 const int gyroPin = A8;           //define the pin that gyro is connected  
-int T = 100;                        // T is the time of one loop, 0.1 sec  
 int gyroADC = 0;           // read out value of sensor  
 float gyroSupplyVoltage = 5;      // supply voltage for gyro 
-float gyroZeroVoltage = 0;         // the value of voltage when gyro is zero  
 float gyroSensitivity = 0.007;      // gyro sensitivity unit is (mv/degree/second) get from datasheet  
 float rotationThreshold = 3;      // because of gyro drifting, defining rotation angular velocity less  
 float angularVelocity = 0;
