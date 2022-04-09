@@ -28,7 +28,7 @@ const int LEFT_FRONT_LIR = A4; //sensor is attatched on pin A4
 const int LEFT_BACK_LIR = A5; //sensor is attatched on pin A5
 const int LEFT_BACK_MIR = A6; //sensor is attatched on pin A6
 const int RIGHT_BACK_MIR = A7; //sensor is attatched on pin A7
-const int GYRO = A8; //Gyro is attatched on pin A8
+  const int GYRO = A8; //Gyro is attatched on pin A8
 const int trigPin = 34;
 const int echoPin = 35;
 
@@ -147,6 +147,8 @@ void loop(){
       raw_lipo=analogRead(A0);
       Serial.println(raw_lipo);
       delay(400);
+        bluetoothSerialOutputMonitor(713, raw_lipo, 860);
+
     }
     break;
 
@@ -161,6 +163,8 @@ void loop(){
       Serial.print(Lipo_level_cal);
       Serial.println("%");
       delay(400);
+        bluetoothSerialOutputMonitor(0, Lipo_level_cal, 100);
+
     }
     break;
 
@@ -168,10 +172,10 @@ void loop(){
     case 4:
       while(1){
         ADC_sensor[0] = analogRead(LEFT_FRONT_LIR); // the read out is a signal from 0-1023 corresponding to 0-5v
-        if (ADC_sensor[0] <= 600){
+        if (ADC_sensor[0] != 0){
           SensorSignalProcess(1, ADC_sensor[0]);
         }
-        bluetoothSerialOutputMonitor(0, ADC_sensor[0], averaged[0]);
+//        bluetoothSerialOutputMonitor(0, ADC_sensor[0], averaged[0]);
       }
     break;
 
@@ -179,9 +183,11 @@ void loop(){
     case 5:
       while(1){
         ADC_sensor[1] = analogRead(LEFT_BACK_LIR); // the read out is a signal from 0-1023 corresponding to 0-5v
-        if (ADC_sensor[1] <=600){
+        if (ADC_sensor[1] != 0){
           SensorSignalProcess(2, ADC_sensor[1]);
         }
+//        bluetoothSerialOutputMonitor(0, ADC_sensor[1], averaged[1]);
+
       }
     break;
 
@@ -189,9 +195,11 @@ void loop(){
     case 6:
       while(1){
         ADC_sensor[2] = analogRead(LEFT_BACK_MIR); // the read out is a signal from 0-1023 corresponding to 0-5v
-        if (ADC_sensor[2] <=600){
+        if (ADC_sensor[2] != 0){
           SensorSignalProcess(3, ADC_sensor[2]);        
         }
+//        bluetoothSerialOutputMonitor(0, ADC_sensor[2], averaged[2]);
+
       }
     break;
 
@@ -199,9 +207,11 @@ void loop(){
     case 7:
       while(1){
         ADC_sensor[3] = analogRead(RIGHT_BACK_MIR); // the read out is a signal from 0-1023 corresponding to 0-5v
-        if(ADC_sensor[3]<= 600){
+        if(ADC_sensor[3] != 0){
           SensorSignalProcess(4, ADC_sensor[3]);        
         }
+//        bluetoothSerialOutputMonitor(0, ADC_sensor[3], averaged[3]);
+
       }
     break;
 
@@ -232,6 +242,8 @@ void loop(){
     while(1){
       callibrated_sensor[5] = getGyroAngle();
     }
+        bluetoothSerialOutputMonitor(0, callibrated_sensor[5],0);
+
     break;
 
     //USE MODE 11 TO PRINT FILTERED ULTRASONIC VALUES
@@ -245,6 +257,8 @@ void loop(){
 
         timer_first_call = false;
       }
+      bluetoothSerialOutputMonitor(0, callibrated_sensor[4], averaged[4]);
+
     } 
     break;
   }
@@ -257,7 +271,6 @@ float usonic_transmit() {
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
   float duration = pulseIn(echoPin, HIGH);
-  //delay(60);
   return duration;
   
 }
@@ -278,9 +291,10 @@ float getGyroAngle(){
   {
     currentAngle -= 360;
   }
-  Serial.println(currentAngle);
+//  Serial.println(currentAngle);
 
   delay (T);
+  return currentAngle;
 }
 
 void SensorSignalProcess(int code, float RawADC) { // find distances using calibration curve equations
@@ -407,7 +421,6 @@ void SensorSignalProcess(int code, float RawADC) { // find distances using calib
 
     break;
   }
-  return dist;
 }
 
 /*float Sonarkalman(float U){
@@ -429,7 +442,6 @@ float Kalman(float rawdata, float prev_est, float process_noise, float sensor_no
 
   a_priori_est = prev_est;
   a_priori_var = last_variance + process_noise;
-
   kalman_gain = a_priori_var/(a_priori_var+sensor_noise);
   a_post_est = a_priori_est + kalman_gain*(rawdata-a_priori_est);
   a_post_var = (1- kalman_gain)*a_priori_var;
