@@ -137,7 +137,7 @@ void loop(){
         Serial.print("   |   ");
         Serial.print("RBM: ");
         Serial.println(ADC_sensor[3]);
-        delay(25);
+        delay(250);
     }
     break;
 
@@ -348,7 +348,7 @@ void SensorSignalProcess(int code, float RawADC) { // find distances using calib
     break;
     case 3:
     
-      dist = 4382.9*pow(RawADC, -.984);//Callibration for LEFT MIR
+      dist = 3730.6*pow(RawADC, -1.082);//Callibration for LEFT MIR
 
 //    ----KALMAN FILTER
       callibrated_sensor[2] = Kalman(dist, sensor_past[2], process_noise[2], sensor_noise[2], last_var[2], 3);
@@ -372,7 +372,7 @@ void SensorSignalProcess(int code, float RawADC) { // find distances using calib
     break;
     case 4:
     
-      dist = 4382.9*pow(RawADC, -.984);//Callibration for RIGHT MIR
+      dist = 3491.3*pow(RawADC, -1.069);//Callibration for RIGHT MIR
 
 //    ----KALMAN FILTER
       callibrated_sensor[3] = Kalman(dist, sensor_past[3], process_noise[3], sensor_noise[3], last_var[3], 4);
