@@ -162,7 +162,7 @@ float l = 009.078;
 float R_w = 002.54;
 
 float velocity[3] = {0,0,0};
-float max_velocity[3] = {20,20,1.5}; // cm/s
+float max_velocity[3] = {20,15,1.5}; // cm/s
 float ang_vel[4] = {0,0,0,0};
 
 float motor_speed_Value[4] = {0,0,0,0};
@@ -177,12 +177,12 @@ float rateError[3] = {0,0,0};
 
 float Pterm[3], Iterm[3], Dterm[3];
 
-//StraightLine
-float Kp_r[3] = {2,2.5,1.65};
+// PID VALUES FOR X AND Y NEED TO BE TUNED AND TESTED - TURNING SHOULD BE FINE
+float Kp_r[3] = {1.5,2,1.65};
 float Ki_r[3] = {0.018,0.02,0.05};
 float Kd_r[3] = {0,0,0};
 
-float Kp_straight = 50;
+float Kp_straight = 60; // SHOULD BE TUNED
 float Kp_turn = 500;
 float Kp_align = 80; // gain for aligning to wall
 
@@ -347,7 +347,7 @@ RUN_STATE find_corner() { // Drives robot to TL or BR corner
 //    SHORT = false;
 //  }
 
-  driveXYZ(20,20,0);
+  driveXYZ(20,20,0); // ITS AS GOOD AS CONTROLLER SCRIPT - NEEDS TUNING
   delay(1000);
 
   return FORWARD;
@@ -355,6 +355,10 @@ RUN_STATE find_corner() { // Drives robot to TL or BR corner
 
 RUN_STATE forward() {
   forward_flag = true;
+  
+  align_back(); // align mid range IRs to back wall before starting 
+  
+  delay(200);
 
   if(turned) {
     driveXYZ(15, 45 - ((switch_back_count - 5) * 10), 0); 
@@ -376,7 +380,7 @@ RUN_STATE reverse() {
   forward_flag = false;
 
   if(turned) {
-    driveXYZ(185, 45 - ((switch_back_count - 5) * 10), 0); // IF ULTRASONIC NOT ACCURATE ENOUGH - COULD USE MID RANGE IRS TO KEEP WALL DISTANCE CONSTANT
+    driveXYZ(185, 45 - ((switch_back_count - 5) * 10), 0);
   }
   else {
     driveXYZ(185, 15 + (switch_back_count * 10), 0); 
@@ -501,8 +505,6 @@ void corner_long() { // drives robot to corner if on long side
   float ultra_dist;
   
   driveXYZ(0,0,-PI/2); // rotate 90 degrees CCW
-  //drive(0, 0, -PI/2);
-
   delay(100);
 
   ultra_dist = Ultrasound(); // read distance from wall
@@ -529,7 +531,7 @@ void corner_short() { // drives robot to corner if on short side
   align();
 }
 
-void align_controller() { // uses long range IRs with gain to align robot to wall - P CONTROLLER
+void align_controller() { // uses long range IRs with gain to align robot to wall - P CONTROLLER - NEEDS MORE TESTING
   float ir1_dist, ir2_dist, diff, power;
   float alignment_threshold = 0.2;
 
@@ -564,7 +566,7 @@ void align_controller() { // uses long range IRs with gain to align robot to wal
   
 void align() { // uses long range IRs to align robot to wall
   float ir1_dist, ir2_dist;
-  float alignment_threshold = 0.2; // IRs within 0.2cm of one another
+  float alignment_threshold = 0.2; // IRs within 0.2cm of one another - SHOULD BE TWEAKED
 
   // read long range IRs
   ir1_dist = IR_dist(LEFT_FRONT);
@@ -594,9 +596,9 @@ void align() { // uses long range IRs to align robot to wall
   return;
 }
 
-void align_back() { //uses mid range IRs to align to wall
+void align_back() { //uses mid range IRs to align to wall - COULD ALSO IMPLEMENT BETTER CONTROL (P CONTROL)
   float ir1_dist, ir2_dist;
-  float alignment_threshold = 0.25;
+  float alignment_threshold = 0.2;
 
   // read long range IRs
   ir1_dist = IR_dist(BACK_LEFT);
@@ -647,7 +649,7 @@ void driveXYZ(float x, float y, float z) { // Drives robot straight in x, y, and
   reference[2] = z;
 
   while(DRIVING) {
-    Controller(); // need to set DRIVING as false when stopped
+    Controller(); // CONTROL LOOP
   }
 
   stop(); // stop motors
@@ -660,7 +662,7 @@ void driveXYZ(float x, float y, float z) { // Drives robot straight in x, y, and
   ignore_z = false;
 }
 
-//void rotate(float angle) { // Turns robot to ensure alignment +ve = CW, -ve = CCW - USES P CONTROL
+//void rotate(float angle) { // OLD ROTATE FUNCTION - DOESNT USE KINEMATICS
 //  float rotation = 0; 
 //  float starting_angle = 0;
 //  float power;
@@ -723,14 +725,14 @@ void cw(int speedval)
 //----CONTROL----
 void Controller() {
   IR_Sensors(); // get info from IRs
-  correction = Kp_straight * IR_diff;
+  correction = Kp_straight * IR_diff; // correction from IR sensors
 
   if(!ignore_x) {
     if(reference[0] == 185 && IR_mid_dist < 30) { // switch to mid range IRs for x direction control when reversing 15cm away
       error[0] = IR_mid_dist - 15.0;
     }
     else {
-      error[0] = reference[0] - Ultrasound();
+      error[0] = reference[0] - Ultrasound(); // use ultrasonic for all other references
     }
   }
   if(!ignore_y) { // if ignore y flag if false - update y error
@@ -738,7 +740,7 @@ void Controller() {
   }
   if(!ignore_z) {
     error[2] = reference[2] - gyroAngle();
-    correction = 0;
+    correction = 0; // set correction to 0 as to not interfere with turning
   }
 
   PID_Controller();
@@ -747,7 +749,7 @@ void Controller() {
   set_motors();
 
   // exit loop
-  if((abs(error[0]) + abs(error[1])) < 2.0 && (ignore_z)) { // XY exit condition
+  if((abs(error[0]) + abs(error[1])) < 2.0 && (ignore_z)) { // XY exit condition - SHOULD BE TWEAKED
     DRIVING = false;
     return;
   }
@@ -756,7 +758,8 @@ void Controller() {
     currentAngle = 0;
     return;
   }
-  delay(20);
+  
+  delay(15); // SHOULD BE TWEAKED AND TESTED
 }
 
 void PID_Controller(){
@@ -764,7 +767,7 @@ void PID_Controller(){
   currentTime = millis();                
   elapsedTime = (currentTime - previousTime)/1000.0; 
 
-  //if((currentTime - previousTime) >= pid_sample_time || (pid_first_call)) { // sampling
+  //if((currentTime - previousTime) >= pid_sample_time || (pid_first_call)) { // sampling - NOT USED
     
     for (int i = 0; i < 3; i++) {
       Pterm[i] = Kp_r[i] * error[i];
@@ -823,7 +826,7 @@ void inverse_kinematics(){
 
 void set_motor_speed(){
   for (int i = 0; i < 4; i++){
-    motor_speed_Value[i] = ang_vel[i] * 30; // scale angular velocity to motor speed value - COULD BE TUNED BETTER
+    motor_speed_Value[i] = ang_vel[i] * 27; // scale angular velocity to motor speed value - COULD BE TUNED BETTER
   }
 }
 
