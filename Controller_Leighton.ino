@@ -20,30 +20,30 @@ float l = 009.078;
 float R_w = 002.54;
 
 float velocity[3] = {0,0,0};
-float max_velocity[3] = {20,20,1.5}; // cm/s - rad/s
+float max_velocity[3] = {25,20,1.5}; // cm/s - rad/s
 float ang_vel[4] = {0,0,0,0};
 
 float motor_speed_Value[4] = {0,0,0,0};
 //----InverseKinematicValues----
 
 //----PIDValues----
-float reference[3] = {25,25,0};
+float reference[3] = {20,20,0};
 float currentTime, previousTime, elapsedTime;
 float error[3] = {0,0,0};
 float lastError[3] = {0,0,0};
 float rateError[3] = {0,0,0};
 
-const int pid_sample_time = 40; // 40ms sampling period - 25Hz
+//const int pid_sample_time = 0; // 40ms sampling period - 25Hz
 bool pid_first_call = true;
 
 //StraightLine
-float Kp_r[3] = {1,3,1.65};
-float Ki_r[3] = {0.01,0.03,0.05};
+float Kp_r[3] = {2,2.5,1.65};
+float Ki_r[3] = {0.018,0.02,0.05};
 float Kd_r[3] = {0,0,0};
 
 float Pterm[3], Iterm[3], Dterm[3];
 
-float Kp_straight = 80;
+float Kp_straight = 90;
 //----PIDValues----
 
 //----Gyro----
@@ -62,8 +62,6 @@ int timeElapsed = 0;
 float gyroRate = 0;                      // read out value of sensor in voltage   
 float angleChange = 0;
 float currentAngle = 0;               // current angle calculated by angular velocity integral on  
-byte serialRead = 0;
-
 float radiansAngle = 0;
 //----Gyro----
 
@@ -72,12 +70,12 @@ const int trigPin = 34;
 const int echoPin = 35;
 float Ultraduration;
 float Ultradistance = 0;
-const float ultra_centre_offset = 10.5;
+const float ultra_centre_offset = 11.0;
 
-const int ultra_sampling_time = 40; //40ms sampling time
-int ultra_time;
-int prev_ultra_time;
-bool ultra_first_call = true;
+//const int ultra_sampling_time = 0; //40ms sampling time
+//int ultra_time;
+//int prev_ultra_time;
+//bool ultra_first_call = true;
 //----Ultrasound----
 
 //----IR----
@@ -119,8 +117,8 @@ const float mid_centre_offset = 7.0;
 //----IR Kalman Filter----
 float last_est[4] = {0,0,0,0};
 float last_var[4] = {999,999,999,999};
-float process_noise = 1;
-float sensor_noise = 25;    // Change the value of sensor noise to get different KF performance
+float process_noise = 5;
+float sensor_noise = 5;    // Change the value of sensor noise to get different KF performance
 //----IR Kalman Filter----
 
 #define WINDOW_SIZE 13
@@ -168,7 +166,7 @@ void Controller(){
   inverse_kinematics();
   set_motor_speed();
   set_motors();
-  delay(10);
+  delay(20);
 }
 
 void PID_Controller(){
@@ -176,44 +174,34 @@ void PID_Controller(){
   currentTime = millis();                
   elapsedTime = (currentTime - previousTime)/1000.0; 
  
-  if((currentTime - previousTime) >= pid_sample_time || (pid_first_call)) { // sampled at 20Hz
+  //if((currentTime - previousTime) >= pid_sample_time || (pid_first_call)) { // sampled at 20Hz
     for (int i = 0; i < 3; i++){
   
       Pterm[i] = Kp_r[i] * error[i];
       Iterm[i] += Ki_r[i] * error[i] * elapsedTime;
       Dterm[i] = Kd_r[i] * ((error[i] - lastError[i]) / elapsedTime);
-  
-      // anti wind-up - Iterm only
-      if(abs(Iterm[i]) > max_velocity[i]) {
-        if(Iterm[i] < 0) {
-          Iterm[i] = -1 * max_velocity[i];
+
+      // anti wind-up - Iterm and Pterm (More powerful anti windup - constrains total control effort to always be <= max velocity)
+      if(abs(Pterm[i]) > max_velocity[i]) {
+        
+        // constrains Iterm such that Pterm + Iterm <= maximum velocity
+        if(Pterm[i] < 0) {
+          Pterm[i] = (-1 * max_velocity[i]);
         }
         else {
-          Iterm[i] = max_velocity[i];
+          Pterm[i] = max_velocity[i];
         }
       }
-
-//      // anti wind-up - Iterm and Pterm (More powerful anti windup - constrains total control effort to always be <= max velocity)
-//      if(abs(Pterm[i]) > max_velocity[i]) {
-//        
-//        // constrains Iterm such that Pterm + Iterm <= maximum velocity
-//        if(Pterm[i] < 0) {
-//          Pterm[i] = (-1 * max_velocity[i]);
-//        }
-//        else {
-//          Pterm[i] = max_velocity[i];
-//        }
-//      }
-//      if(abs(Iterm[i] + Pterm[i]) > max_velocity[i]) {
-//        
-//        // constrains Iterm such that Pterm + Iterm <= maximum velocity
-//        if((Iterm[i] + Pterm[i]) < 0) {
-//          Iterm[i] = (-1 * max_velocity[i]) - Pterm[i];
-//        }
-//        else {
-//          Iterm[i] = max_velocity[i] - Pterm[i];
-//        }
-//      }
+      if(abs(Iterm[i] + Pterm[i]) > max_velocity[i]) {
+        
+        // constrains Iterm such that Pterm + Iterm <= maximum velocity
+        if((Iterm[i] + Pterm[i]) < 0) {
+          Iterm[i] = (-1 * max_velocity[i]) - Pterm[i];
+        }
+        else {
+          Iterm[i] = max_velocity[i] - Pterm[i];
+        }
+      }
   
       velocity[i] = Pterm[i] + Iterm[i] + Dterm[i];
       
@@ -229,9 +217,9 @@ void PID_Controller(){
           
       lastError[i] = error[i];                                                
     }
-    pid_first_call = false;
+    //pid_first_call = false;
     previousTime = currentTime; 
-  }
+  //}
 }
 
 void inverse_kinematics(){
@@ -255,9 +243,9 @@ void set_motors() {
 }
 
 void Ultrasound(){
-  ultra_time = millis();
+  //ultra_time = millis();
   
-  if((ultra_time - prev_ultra_time) >= ultra_sampling_time || (ultra_first_call)) { //20Hz
+  //if((ultra_time - prev_ultra_time) >= ultra_sampling_time || (ultra_first_call)) { //20Hz
     digitalWrite(trigPin, LOW);
     delayMicroseconds(2);
     digitalWrite(trigPin, HIGH);
@@ -267,9 +255,9 @@ void Ultrasound(){
     // Calculating the distance
     Ultradistance = ultra_centre_offset + (Ultraduration * 0.034 / 2);
 
-    prev_ultra_time = ultra_time;
+   // prev_ultra_time = ultra_time;
     ultra_first_call = false;
-  }
+ // }
 }
 
 void IR_Sensors(){
@@ -309,17 +297,15 @@ void gyro() { // could be tuned better
   prev_gyroTime = gyroTime;
 }
 
-double IR_dist(IR code) { // find distances using calibration curve equations
-  double est, dist;
+float IR_dist(IR code) { // find distances using calibration curve equations
+  float est, dist;
   int adc;
   
   switch(code) {
     case LEFT_FRONT:
       adc = analogRead(IR_LONG_1);
-      //Serial.println(adc);
       dist = (5780.3)/(pow(adc,1.027));
       est = Kalman(dist, last_est[0], last_var[0], LEFT_FRONT);
-      last_est[0] = est;
       
       //MA FILTER
       SUM[0] -= FRONT_LIR[index[0]];
@@ -336,8 +322,6 @@ double IR_dist(IR code) { // find distances using calibration curve equations
       adc = analogRead(IR_LONG_2);
       dist = (4382.9)/(pow(adc,0.984));
       est = Kalman(dist, last_est[1], last_var[1], LEFT_BACK);
-      last_est[1] = est; 
-      break;
       
       //MA FILTER
       SUM[1] -= BACK_LIR[index[1]];
@@ -354,11 +338,10 @@ double IR_dist(IR code) { // find distances using calibration curve equations
       adc = analogRead(IR_MID_1);
       dist = (3730.6)/(pow(adc,1.082));
       est = Kalman(dist, last_est[2], last_var[2], BACK_LEFT);
-      last_est[2] = est;
 
       //MA FILTER
-      SUM[2] -= FRONT_LIR[index[2]];
-      FRONT_LIR[index[2]] = est;
+      SUM[2] -= LEFT_MIR[index[2]];
+      LEFT_MIR[index[2]] = est;
       SUM[2] += est;
       index[2] = (index[2] + 1) % WINDOW_SIZE;
       averaged[2] = SUM[2]/WINDOW_SIZE;
@@ -371,14 +354,13 @@ double IR_dist(IR code) { // find distances using calibration curve equations
       adc = analogRead(IR_MID_2);
       dist = (3491.3)/(pow(adc,1.069));
       est = Kalman(dist, last_est[3], last_var[3], BACK_RIGHT);
-      last_est[3] = est; 
 
       //MA FILTER
-      SUM[3] -= FRONT_LIR[index[3]];
-      FRONT_LIR[index[3]] = est;
+      SUM[3] -= RIGHT_MIR[index[3]];
+      RIGHT_MIR[index[3]] = est;
       SUM[3] += est;
       index[3] = (index[3] + 1) % WINDOW_SIZE;
-      averaged[2] = SUM[3]/WINDOW_SIZE;
+      averaged[3] = SUM[3]/WINDOW_SIZE;
       est = averaged[3];
       last_est[3] = averaged[3];
       //MA FILTER
@@ -392,8 +374,8 @@ double IR_dist(IR code) { // find distances using calibration curve equations
 }
 
 // Kalman Filter for IR sensors
-double Kalman(double rawdata, double prev_est, double last_variance, IR code) { 
-  double a_priori_est, a_post_est, a_priori_var, a_post_var, kalman_gain;
+float Kalman(float rawdata, float prev_est, float last_variance, IR code) { 
+  float a_priori_est, a_post_est, a_priori_var, a_post_var, kalman_gain;
 
   a_priori_est = prev_est;  
   a_priori_var = last_variance + process_noise; 
