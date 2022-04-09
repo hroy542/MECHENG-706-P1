@@ -12,13 +12,6 @@ enum STATE {
   STOPPED
 };
 
-// XY driving states
-enum DIRECTION {
-  FORWARD,
-  REVERSE,
-  LEFT,
-  RIGHT,
-};
 
 //Refer to Shield Pinouts.jpg for pin locations
 
@@ -130,8 +123,6 @@ bool ignore_y = false;
 bool ignore_z = false;
 //----Driving----
 
-float Kp_align = 100; // gain for aligning to wall
-
 // Anything over 400 cm (23200 us pulse) is "out of range". Hit:If you decrease to this the ranging sensor but the timeout is short, you may not need to read up to 4meters.
 const unsigned int MAX_DIST = 23200;
 
@@ -169,6 +160,7 @@ float Kd_r[3] = {0,0,0};
 
 float Kp_straight = 80;
 float Kp_turn = 500;
+float Kp_align = 100; // gain for aligning to wall
 
 const int pid_sample_time = 40; // 40ms sampling period - 25Hz
 bool pid_first_call = true;
@@ -197,8 +189,6 @@ void setup(void)
   SerialCom->println("MECHENG706_Base_Code_25/01/2018");
   delay(1000);
   SerialCom->println("Setup....");
-
-  delay(1000); //settling time but no really needed
 
 }
 
@@ -577,7 +567,7 @@ void find_corner() { // Drives robot to TL or BR corner
 //    SHORT = false;
 //  }
 
-  delay(5000);
+  delay(500);
 
   // change FSM state - in full code
 }
@@ -660,7 +650,6 @@ void corner_long() { // drives robot to corner if on long side
   delay(100);
 
   align();
-  LONG = false;
 }
 
 void corner_short() { // drives robot to corner if on short side
@@ -673,7 +662,6 @@ void corner_short() { // drives robot to corner if on short side
   driveXYZ(185, 15, 0); // strafe left into starting position
   delay(100);
   align();
-  SHORT = false;
 }
   
 void align_controller() { // uses long range IRs with gain to align robot to wall - P CONTROLLER
@@ -797,6 +785,8 @@ void driveXYZ(float x, float y, float z) { // Drives robot straight in x, y, and
   while(DRIVING) {
     Controller(); // need to set DRIVING as false when stopped
   }
+
+  stop(); // stop motors
   
   // reset flags
   ultra_first_call = true;
@@ -867,11 +857,10 @@ void cw(int speedval)
 //----OPEN LOOP DRIVING FUNCTIONS----
 
 void Controller(){
-
   IR_Sensors(); // gets info from IRs including wall dist and drift correction factor
 
   if(!ignore_x) { // if ignore y flag if false - update y error
-    error[0] = reference[0] - Ultrasound();
+    error[0] = reference[0] - Ultrasound(); // doesn't switch to IRs
   }
   if(!ignore_y) { // if ignore y flag if false - update y error
     error[1] = reference[1] - IR_wall_dist;
@@ -886,7 +875,7 @@ void Controller(){
   set_motors();
 
   // exit loop
-  if((abs(error[0]) + abs(error[1])) < 4.0 && (ignore_z)) { // XY exit condition
+  if((abs(error[0]) + abs(error[1])) < 3.0 && (ignore_z)) { // XY exit condition
     DRIVING = false;
     return;
   }
@@ -903,7 +892,7 @@ void PID_Controller(){
   currentTime = millis();                
   elapsedTime = (currentTime - previousTime)/1000.0; 
 
-  if((currentTime - previousTime) >= pid_sample_time || (pid_first_call)) { // sampled at 50Hz
+  if((currentTime - previousTime) >= pid_sample_time || (pid_first_call)) { // sampling
     
     for (int i = 0; i < 3; i++) {
       Pterm[i] = Kp_r[i] * error[i];
@@ -962,7 +951,6 @@ void PID_Controller(){
   }
 }
 
-
 void inverse_kinematics(){
   ang_vel[0] = (-velocity[0] + velocity[1] + ((L+l)*velocity[2])) / R_w; // left front
   ang_vel[1] = (-velocity[0] - velocity[1] + ((L+l)*velocity[2])) / R_w; // left rear
@@ -1013,7 +1001,8 @@ float Ultrasound() {
     delayMicroseconds(10);
     digitalWrite(trigPin, LOW);
     Ultraduration = pulseIn(echoPin, HIGH);
-    // Calculating the distance
+    
+    // Calculating the distance from robot centre
     Ultradistance = ultra_centre_offset + (Ultraduration * 0.034 / 2);
 
     prev_ultra_time = ultra_time;
@@ -1045,8 +1034,8 @@ double IR_dist(IR code) { // find distances using calibration curve equations
       //Serial.println(adc);
       dist = (5780.3)/(pow(adc,1.027));
       est = Kalman(dist, last_est[0], last_var[0], LEFT_FRONT);
-      last_est[0] = est; 
-
+      last_est[0] = est;
+      
       //MA FILTER
       SUM[0] -= FRONT_LIR[index[0]];
       FRONT_LIR[index[0]] = est;
@@ -1063,7 +1052,8 @@ double IR_dist(IR code) { // find distances using calibration curve equations
       dist = (4382.9)/(pow(adc,0.984));
       est = Kalman(dist, last_est[1], last_var[1], LEFT_BACK);
       last_est[1] = est; 
-
+      break;
+      
       //MA FILTER
       SUM[1] -= BACK_LIR[index[1]];
       BACK_LIR[index[1]] = est;
@@ -1073,19 +1063,41 @@ double IR_dist(IR code) { // find distances using calibration curve equations
       est = averaged[1];
       last_est[1] = averaged[1];
       //MA FILTER
-      
+
       break;
     case BACK_LEFT:
       adc = analogRead(IR_MID_1);
-      //dist =
-      //est = Kalman(dist, last_est[2], last_var[2], BACK_LEFT);
-      //last_est[2] = est; 
+      dist = (3730.6)/(pow(adc,1.082));
+      est = Kalman(dist, last_est[2], last_var[2], BACK_LEFT);
+      last_est[2] = est;
+
+      //MA FILTER
+      SUM[2] -= FRONT_LIR[index[2]];
+      FRONT_LIR[index[2]] = est;
+      SUM[2] += est;
+      index[2] = (index[2] + 1) % WINDOW_SIZE;
+      averaged[2] = SUM[2]/WINDOW_SIZE;
+      est = averaged[2];
+      last_est[2] = averaged[2];
+      //MA FILTER
+      
       break;
     case BACK_RIGHT:
       adc = analogRead(IR_MID_2);
-      //dist = 
-      //est = Kalman(dist, last_est[3], last_var[3], BACK_RIGHT);
-      //last_est[3] = est; 
+      dist = (3491.3)/(pow(adc,1.069));
+      est = Kalman(dist, last_est[3], last_var[3], BACK_RIGHT);
+      last_est[3] = est; 
+
+      //MA FILTER
+      SUM[3] -= FRONT_LIR[index[3]];
+      FRONT_LIR[index[3]] = est;
+      SUM[3] += est;
+      index[3] = (index[3] + 1) % WINDOW_SIZE;
+      averaged[2] = SUM[3]/WINDOW_SIZE;
+      est = averaged[3];
+      last_est[3] = averaged[3];
+      //MA FILTER
+      
       break;
   }
   
@@ -1093,7 +1105,6 @@ double IR_dist(IR code) { // find distances using calibration curve equations
       
   return est;
 }
-
 // Kalman Filter for IR sensors
 double Kalman(double rawdata, double prev_est, double last_variance, IR code) { 
   double a_priori_est, a_post_est, a_priori_var, a_post_var, kalman_gain;
