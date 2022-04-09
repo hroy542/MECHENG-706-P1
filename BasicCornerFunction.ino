@@ -167,7 +167,6 @@ HardwareSerial *SerialCom;
 int pos = 0;
 void setup(void)
 {
-
   // The Trigger pin will tell the sensor to range find
   pinMode(trigPin, OUTPUT);
   digitalWrite(trigPin, LOW);
@@ -215,7 +214,8 @@ STATE running() {
 
 //Stop of Lipo Battery voltage is too low, to protect Battery
 STATE stopped() {
-
+  disable_motors();
+  return STOPPED;
 }
 
 
@@ -263,30 +263,30 @@ void find_corner() { // Drives robot to TL or BR corner
   7. If short side, reverse 5cm using ultrasonic sensor
   8. Strafe left into starting position (15cm from wall) ensuring alignment using all IRs
   */
-//  orient(); // initial orient of robot parallel to wall
-//
-//  delay(500);
-//  
-//  float wall_dist = (0.63 * IR_dist(LEFT_FRONT)) + (0.37 * IR_dist(LEFT_BACK));
-//
-//  driveXYZ(25.0, wall_dist, 0);
-//
-//  delay(500);
-//
-//  find_side(); // determines if on long or short side
-//
-//  delay(500);
-//
-//  if(LONG) {
-//    corner_long();
-//    LONG = false;
-//  }
-//  else if(SHORT) {
-//    corner_short();
-//    SHORT = false;
-//  }
-//
-//  disable_motors();
+  orient(); // initial orient of robot parallel to wall
+
+  delay(500);
+  
+  float wall_dist = (0.63 * IR_dist(LEFT_FRONT)) + (0.37 * IR_dist(LEFT_BACK));
+
+  driveXYZ(25.0, wall_dist, 0);
+
+  delay(500);
+
+  find_side(); // determines if on long or short side
+
+  delay(500);
+
+  if(LONG) {
+    corner_long();
+    LONG = false;
+  }
+  else if(SHORT) {
+    corner_short();
+    SHORT = false;
+  }
+
+  disable_motors();
 
 
 
@@ -323,14 +323,14 @@ void orient() { // initial orienting of robot parallel to wall using IR
   
   // while robot is not parallel to wall
   while(!parallel) {
-    ccw(90); // rotate CCW
+    ccw(95); // rotate CCW
     
     // get distances for both IRs
     ir1_dist = IR_dist(LEFT_FRONT);
     ir2_dist = IR_dist(LEFT_BACK);
     
     // if both IRs are within 55cm
-    if(ir1_dist < 55 && ir2_dist < 55) {
+    if(ir1_dist < 58 && ir2_dist < 58) {
       
       // calculate ratio between IR distances
       if(ir1_dist < ir2_dist) {
@@ -369,12 +369,12 @@ void find_side() { // determine whether on short or long side of rectangle
   //ultra_first_call = true;
 
   // if ultrasonic detects > 160 cm - robot on short side
-  if(ultra_dist > 150) {
+  if(ultra_dist > 160) {
     LONG = false;
     SHORT = true;
   }
   // if ultrasonic detects < 130 cm - robot on long side
-  else if(ultra_dist < 130) {
+  else if(ultra_dist < 120) {
     SHORT = false;
     LONG = true;
   }
@@ -405,7 +405,7 @@ void corner_long() { // drives robot to corner if on long side
 void corner_short() { // drives robot to corner if on short side
   driveXYZ(185, 0, 0); // reverse until 15cm from wall
   delay(100);
-  align();
+  align_back();
 
   delay(100);
   
@@ -449,7 +449,7 @@ void align_controller() { // uses long range IRs with gain to align robot to wal
 
 void align() { // uses long range IRs to align robot to wall - NO CONTROLLER
   float ir1_dist, ir2_dist;
-  float alignment_threshold = 0.3;
+  float alignment_threshold = 0.2;
 
   // read long range IRs
   ir1_dist = IR_dist(LEFT_FRONT);
@@ -495,10 +495,10 @@ void align_back() { //uses mid range IRs to align to wall - NO CONTROLLER
 
   // determine direction of rotation for correction
   if(ir1_dist > ir2_dist) {
-    ccw(80);
+    ccw(70);
   }
   else {
-    cw(80);
+    cw(70);
   }
 
   // update IR distances until aligned
@@ -546,38 +546,38 @@ void driveXYZ(float x, float y, float z) { // Drives robot straight in x, y, and
   ignore_z = false;
 }
 
-void rotate(float angle) { // Turns robot to ensure alignment +ve = CW, -ve = CCW - USES P CONTROL
-  float rotation = 0; 
-  float starting_angle = 0;
-  float power;
-  
-  currentAngle = 0;
-
-  starting_angle = gyroAngle(); // get initial angle
-  
-  do {
-    rotation = gyroAngle();
-    power = (angle - rotation) * Kp_turn;
-
-    // constrain
-    if(power > 250) {
-      power = 250;
-    }
-    else if(power < -250) {
-      power = -250;
-    }
-
-    // send power
-    left_front_motor.writeMicroseconds(1500 + power);
-    left_rear_motor.writeMicroseconds(1500 + power);
-    right_rear_motor.writeMicroseconds(1500 + power);
-    right_front_motor.writeMicroseconds(1500 + power);
-  } while(abs(rotation) < abs(angle)); // exit condition
-  
-  align(); // align with the wall
-  
-  return;
-}
+//void rotate(float angle) { // Turns robot to ensure alignment +ve = CW, -ve = CCW - USES P CONTROL
+//  float rotation = 0; 
+//  float starting_angle = 0;
+//  float power;
+//  
+//  currentAngle = 0;
+//
+//  starting_angle = gyroAngle(); // get initial angle
+//  
+//  do {
+//    rotation = gyroAngle();
+//    power = (angle - rotation) * Kp_turn;
+//
+//    // constrain
+//    if(power > 250) {
+//      power = 250;
+//    }
+//    else if(power < -250) {
+//      power = -250;
+//    }
+//
+//    // send power
+//    left_front_motor.writeMicroseconds(1500 + power);
+//    left_rear_motor.writeMicroseconds(1500 + power);
+//    right_rear_motor.writeMicroseconds(1500 + power);
+//    right_front_motor.writeMicroseconds(1500 + power);
+//  } while(abs(rotation) < abs(angle)); // exit condition
+//  
+//  align(); // align with the wall
+//  
+//  return;
+//}
 //----WRITTEN DRIVING FUNCTIONS----
 
 //----OPEN LOOP DRIVING FUNCTIONS----
