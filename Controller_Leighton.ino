@@ -156,14 +156,19 @@ void Controller(){
   gyro();
   Ultrasound();
   IR_Sensors();
-  error[0] = reference[0] - Ultradistance;
+  if(reference[0] == 185 && IR_mid_dist < 30) {
+    error[0] = IR_mid_dist - 15.0;
+  }
+  else {
+    error[0] = reference[0] - Ultradistance;
+  }
   error[1] = reference[1] - IR_wall_dist;
   error[2] = reference[2] - radiansAngle;
   PID_Controller();
   inverse_kinematics();
   set_motor_speed();
   set_motors();
-  delay(20);
+  delay(10);
 }
 
 void PID_Controller(){
@@ -271,10 +276,17 @@ void IR_Sensors(){
   // Get distances from left side of robot to wall
   IR_LONG_1_DIST = IR_dist(LEFT_FRONT);
   IR_LONG_2_DIST = IR_dist(LEFT_BACK);
+
+  IR_MID_1_DIST = IR_dist(BACK_LEFT);
+  IR_MID_2_DIST = IR_dist(BACK_RIGHT);
   
   IR_wall_dist = long_centre_offset + (0.37 * IR_LONG_1_DIST + 0.63 * IR_LONG_2_DIST); // distance of centre of robot to wall
   IR_diff = IR_LONG_1_DIST - IR_LONG_2_DIST; // Difference between long range IRs
-  IR_Angle = atan((IR_diff/IR_Between_Dist));
+  //IR_Angle = atan((IR_diff/IR_Between_Dist));
+  
+  IR_mid_dist = mid_centre_offset + ((IR_MID_1_DIST + IR_MID_2_DIST) / 2);
+  IR_mid_diff = IR_MID_1_DIST - IR_MID_2_DIST;
+  
   correction = Kp_straight * IR_diff;
 }
 
@@ -340,15 +352,37 @@ double IR_dist(IR code) { // find distances using calibration curve equations
       break;
     case BACK_LEFT:
       adc = analogRead(IR_MID_1);
-      //dist =
-      //est = Kalman(dist, last_est[2], last_var[2], BACK_LEFT);
-      //last_est[2] = est;
+      dist = (3730.6)/(pow(adc,1.082));
+      est = Kalman(dist, last_est[2], last_var[2], BACK_LEFT);
+      last_est[2] = est;
+
+      //MA FILTER
+      SUM[2] -= FRONT_LIR[index[2]];
+      FRONT_LIR[index[2]] = est;
+      SUM[2] += est;
+      index[2] = (index[2] + 1) % WINDOW_SIZE;
+      averaged[2] = SUM[2]/WINDOW_SIZE;
+      est = averaged[2];
+      last_est[2] = averaged[2];
+      //MA FILTER
+      
       break;
     case BACK_RIGHT:
       adc = analogRead(IR_MID_2);
-      //dist = 
-      //est = Kalman(dist, last_est[3], last_var[3], BACK_RIGHT);
-      //last_est[3] = est; 
+      dist = (3491.3)/(pow(adc,1.069));
+      est = Kalman(dist, last_est[3], last_var[3], BACK_RIGHT);
+      last_est[3] = est; 
+
+      //MA FILTER
+      SUM[3] -= FRONT_LIR[index[3]];
+      FRONT_LIR[index[3]] = est;
+      SUM[3] += est;
+      index[3] = (index[3] + 1) % WINDOW_SIZE;
+      averaged[2] = SUM[3]/WINDOW_SIZE;
+      est = averaged[3];
+      last_est[3] = averaged[3];
+      //MA FILTER
+      
       break;
   }
   
