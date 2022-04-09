@@ -20,7 +20,7 @@ float l = 009.078;
 float R_w = 002.54;
 
 float velocity[3] = {0,0,0};
-float max_velocity[3] = {20,15,1.5}; // cm/s - rad/s
+float max_velocity[3] = {20,20,1.5}; // cm/s - rad/s
 float ang_vel[4] = {0,0,0,0};
 
 float motor_speed_Value[4] = {0,0,0,0};
@@ -29,7 +29,6 @@ float motor_speed_Value[4] = {0,0,0,0};
 //----PIDValues----
 float reference[3] = {25,25,0};
 float currentTime, previousTime, elapsedTime;
-float max_velocities[3] = {500, 500, 600};
 float error[3] = {0,0,0};
 float lastError[3] = {0,0,0};
 float rateError[3] = {0,0,0};
@@ -39,7 +38,7 @@ bool pid_first_call = true;
 
 //StraightLine
 float Kp_r[3] = {1,3,1.65};
-float Ki_r[3] = {0.04,0.06,0.05};
+float Ki_r[3] = {0.01,0.03,0.05};
 float Kd_r[3] = {0,0,0};
 
 float Pterm[3], Iterm[3], Dterm[3];
@@ -124,7 +123,7 @@ float process_noise = 1;
 float sensor_noise = 25;    // Change the value of sensor noise to get different KF performance
 //----IR Kalman Filter----
 
-/*#define WINDOW_SIZE 13
+#define WINDOW_SIZE 13
 int index[6] = {0,0,0,0,0,0};//ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
 float value[6] = {0,0,0,0,0,0};//ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
 float SUM[6] = {0,0,0,0,0,0};//ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
@@ -134,7 +133,7 @@ float LEFT_MIR[WINDOW_SIZE];
 float RIGHT_MIR[WINDOW_SIZE];
 float SONAR[5];
 float averaged[6] = {0,0,0,0,0,0};//ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
-//MA Filter -------------*/
+//MA Filter -------------
 
 
 void setup() {
@@ -189,7 +188,17 @@ void PID_Controller(){
         }
       }
 
-//      // anti wind-up - Iterm and Pterm (More powerful anti windup - constrains total control effort)
+//      // anti wind-up - Iterm and Pterm (More powerful anti windup - constrains total control effort to always be <= max velocity)
+//      if(abs(Pterm[i]) > max_velocity[i]) {
+//        
+//        // constrains Iterm such that Pterm + Iterm <= maximum velocity
+//        if(Pterm[i] < 0) {
+//          Pterm[i] = (-1 * max_velocity[i]);
+//        }
+//        else {
+//          Pterm[i] = max_velocity[i];
+//        }
+//      }
 //      if(abs(Iterm[i] + Pterm[i]) > max_velocity[i]) {
 //        
 //        // constrains Iterm such that Pterm + Iterm <= maximum velocity
@@ -270,7 +279,6 @@ void IR_Sensors(){
 }
 
 void gyro() { // could be tuned better
-  prev_gyroTime = gyroTime;
   gyroTime = millis();
 
   timeElapsed = gyroTime - prev_gyroTime;
@@ -285,6 +293,8 @@ void gyro() { // could be tuned better
   }
   
   delay(5);
+  
+  prev_gyroTime = gyroTime;
 }
 
 double IR_dist(IR code) { // find distances using calibration curve equations
@@ -299,7 +309,6 @@ double IR_dist(IR code) { // find distances using calibration curve equations
       est = Kalman(dist, last_est[0], last_var[0], LEFT_FRONT);
       last_est[0] = est;
       
-      /*
       //MA FILTER
       SUM[0] -= FRONT_LIR[index[0]];
       FRONT_LIR[index[0]] = est;
@@ -309,7 +318,7 @@ double IR_dist(IR code) { // find distances using calibration curve equations
       est = averaged[0];
       last_est[0] = averaged[0];
       //MA FILTER
-      */
+      
       break;
     case LEFT_BACK:
       adc = analogRead(IR_LONG_2);
@@ -318,17 +327,17 @@ double IR_dist(IR code) { // find distances using calibration curve equations
       last_est[1] = est; 
       break;
       
-      /*
       //MA FILTER
-      SUM[0] -= FRONT_LIR[index[0]];
-      FRONT_LIR[index[0]] = est;
-      SUM[0] += est;
-      index[0] = (index[0] + 1) % WINDOW_SIZE;
-      averaged[0] = SUM[0]/WINDOW_SIZE;
-      est = averaged[0];
-      last_est[0] = averaged[0];
+      SUM[1] -= BACK_LIR[index[1]];
+      BACK_LIR[index[1]] = est;
+      SUM[1] += est;
+      index[1] = (index[1] + 1) % WINDOW_SIZE;
+      averaged[1] = SUM[1]/WINDOW_SIZE;
+      est = averaged[1];
+      last_est[1] = averaged[1];
       //MA FILTER
-      */
+
+      break;
     case BACK_LEFT:
       adc = analogRead(IR_MID_1);
       //dist =
