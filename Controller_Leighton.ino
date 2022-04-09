@@ -43,7 +43,7 @@ float Kd_r[3] = {0,0,0};
 
 float Pterm[3], Iterm[3], Dterm[3];
 
-float Kp_straight = 90;
+float Kp_straight = 50;
 //----PIDValues----
 
 //----Gyro----
@@ -161,7 +161,7 @@ void Controller(){
     error[0] = reference[0] - Ultradistance;
   }
   error[1] = reference[1] - IR_wall_dist;
-  error[2] = reference[2] - radiansAngle;
+  error[2] = 0;//reference[2] - radiansAngle;
   PID_Controller();
   inverse_kinematics();
   set_motor_speed();
@@ -256,7 +256,7 @@ void Ultrasound(){
     Ultradistance = ultra_centre_offset + (Ultraduration * 0.034 / 2);
 
    // prev_ultra_time = ultra_time;
-    ultra_first_call = false;
+   // ultra_first_call = false;
  // }
 }
 
