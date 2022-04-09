@@ -1,5 +1,5 @@
 // GOING TO CORNER - START
-// REQUIRES DECENTLY ACCURATE GYRO - DOESNT NEED TO BE PERFECT (CAN ALIGN PERPENDICULAR USING IRS) 
+// REQUIRES DECENTLY ACCURATE GYRO - DOESNT NEED TO BE PERFECT (CAN ALIGN parallel USING IRS) 
 
 #include <Servo.h>  //Need for Servo pulse output
 #include <SoftwareSerial.h>
@@ -57,8 +57,8 @@ SoftwareSerial BluetoothSerial(BLUETOOTH_RX, BLUETOOTH_TX);
 const int trigPin = 34;
 const int echoPin = 35;
 float Ultraduration;
-const float ultra_centre_offset = 10.75;
-const int ultra_sampling_time = 50; //50ms sampling time as recommended in data sheet
+const float ultra_centre_offset = 10.5;
+const int ultra_sampling_time = 40; //40ms sampling time
 int ultra_time;
 int prev_ultra_time;
 bool ultra_first_call = true;
@@ -101,18 +101,16 @@ const float mid_centre_offset = 7.0;
 //----IR----
 
 //----IR Kalman Filter----
-float last_est = 0;
-float last_var = 999;
+float last_est[4] = {0,0,0,0};
+float last_var[4] = {999,999,999,999};
 float process_noise = 1;
 float sensor_noise = 25;    // Change the value of sensor noise to get different KF performance
 //----IR Kalman Filter----
 
 //----Gyro----
 const int gyroPin = A8;           //define the pin that gyro is connected  
-int T = 100;                        // T is the time of one loop, 0.1 sec  
 int gyroADC = 0;           // read out value of sensor  
 float gyroSupplyVoltage = 5;      // supply voltage for gyro 
-float gyroZeroVoltage = 0;         // the value of voltage when gyro is zero  
 float gyroSensitivity = 0.007;      // gyro sensitivity unit is (mv/degree/second) get from datasheet  
 float rotationThreshold = 1.5;      // because of gyro drifting, defining rotation angular velocity less  
 float angularVelocity = 0;
@@ -122,21 +120,22 @@ int prevTime = 0;
 float gyroRate = 0;                      // read out value of sensor in voltage   
 float angleChange = 0;
 float currentAngle = 0;               // current angle calculated by angular velocity integral on  
-byte serialRead = 0;
 
 float radiansAngle = 0;
-const float rotation_scale_factor = 0.93; // rotation overshoot correction
 //----Gyro----
 
 //----Find Corner Flags----
-bool perpendicular = false;
+bool parallel = false;
 bool LONG = false;
 bool SHORT = false;
 //----Find Corner Flags----
 
-//----Driving Flags----
+//----Driving----
 bool DRIVING = false;
-//----Driving Flags----
+bool ignore_x = false;
+bool ignore_y = false;
+bool ignore_z = false;
+//----Driving----
 
 // Anything over 400 cm (23200 us pulse) is "out of range". Hit:If you decrease to this the ranging sensor but the timeout is short, you may not need to read up to 4meters.
 const unsigned int MAX_DIST = 23200;
@@ -170,20 +169,13 @@ float rateError[3] = {0,0,0};
 float Pterm, Iterm, Dterm;
 
 //StraightLine
-float Kp_r[3] = {2,4,3};
-float Ki_r[3] = {0.04,0.1,0.05};
+float Kp_r[3] = {1.3,3,1.65};
+float Ki_r[3] = {0.01,0.3,0.05};
 float Kd_r[3] = {0,0,0};
 
-float Kp_straight = 200;
+float Kp_straight = 80;
 
-//Turning
-float Kp_t[3] = {0,0,3};
-float Ki_t[3] = {0,0,0.05};
-float Kd_t[3] = {0,0,0.5};
-
-const int pid_sample_time = 50; // 50ms sampling period - 20Hz
-int pid_time = 0;
-int prev_pid_time = 0;
+const int pid_sample_time = 40; // 40ms sampling period - 20Hz
 bool pid_first_call = true;
 //----PIDValues----
 
@@ -284,7 +276,7 @@ STATE running() {
       running_state = find_corner();
       break;
     //----DRIVING COMPONENT----
-    case FORWARD: //Lipo Battery Volage OK
+    case FORWARD: 
       running_state =  forward();
       break;
     case REVERSE:
@@ -598,7 +590,9 @@ RUN_STATE find_corner() { // Drives robot to TL or BR corner
   8. Strafe left into starting position (15cm from wall) ensuring alignment using all IRs
   */
     
-  orient(); // initial orient of robot perpendicular to wall
+  orient(); // initial orient of robot parallel to wall
+
+  delay(500);
   
   float wall_dist = 0.63 * IR_dist(LEFT_FRONT) + 0.37 * IR_dist(LEFT_BACK);
 
@@ -695,11 +689,11 @@ RUN_STATE complete() {
   stop();
 }
 
-void orient() { // initial orienting of robot perpendicular to wall using IR
+void orient() { // initial orienting of robot parallel to wall using IR
   float ir1_dist, ir2_dist, ratio;
   
-  // while robot is not perpendicular to wall
-  while(!perpendicular) {
+  // while robot is not parallel to wall
+  while(!parallel) {
     ccw(100); // rotate CCW
     
     // get distances for both IRs
@@ -717,11 +711,11 @@ void orient() { // initial orienting of robot perpendicular to wall using IR
         ratio = ir2_dist / ir1_dist;
       }
       
-      // if ratio is ~1 (i.e. nearly perpendicular) stop
+      // if ratio is ~1 (i.e. nearly parallel) stop
       if(ratio >= 0.95) {
         stop();
-        align(); // align to ensure fully perpendicular
-        perpendicular = true; 
+        align(); // align to ensure fully parallel
+        parallel = true; 
       }
     }
   }
@@ -953,6 +947,28 @@ void PID_Controller(){
           Iterm = max_velocity[i];
         }
       }
+
+//      // anti wind-up - Iterm and Pterm (More powerful anti windup - constrains total control effort to always be <= max velocity)
+//      if(abs(Pterm[i]) > max_velocity[i]) {
+//        
+//        // constrains Iterm such that Pterm + Iterm <= maximum velocity
+//        if(Pterm[i] < 0) {
+//          Pterm[i] = (-1 * max_velocity[i]);
+//        }
+//        else {
+//          Pterm[i] = max_velocity[i];
+//        }
+//      }
+//      if(abs(Iterm[i] + Pterm[i]) > max_velocity[i]) {
+//        
+//        // constrains Iterm such that Pterm + Iterm <= maximum velocity
+//        if((Iterm[i] + Pterm[i]) < 0) {
+//          Iterm[i] = (-1 * max_velocity[i]) - Pterm[i];
+//        }
+//        else {
+//          Iterm[i] = max_velocity[i] - Pterm[i];
+//        }
+//      }
   
       velocity[i] = Pterm + Iterm + Dterm;
       
@@ -1005,7 +1021,7 @@ float gyroAngle() { // BASIC FOR TESTING - WILL LIKELY REPLACE WITH TURNING CONT
   angleChange = angularVelocity * (timeElapsed / 1000.0);
   currentAngle += angleChange;
   
-  delay(10);
+  delay(5);
   
   return currentAngle;
 }
