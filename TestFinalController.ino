@@ -98,8 +98,8 @@ float Ultradistance;
 //----IR Kalman Filter----
 float last_est[4] = {0,0,0,0};
 float last_var[4] = {999,999,999,999};
-float process_noise = 1;
-float sensor_noise = 25;    // Change the value of sensor noise to get different KF performance
+float process_noise = 5;
+float sensor_noise = 6;    // Change the value of sensor noise to get different KF performance
 //----IR Kalman Filter----
 
 //----MA Filter----
@@ -121,7 +121,7 @@ int gyroADC = 0;           // read out value of sensor
 float gyroSupplyVoltage = 5;      // supply voltage for gyro 
 const float gyroMiddle = 505; // middle adc value of gyro
 float gyroSensitivity = 0.007;      // gyro sensitivity unit is (mv/degree/second) get from datasheet  
-float rotationThreshold = 3;      // because of gyro drifting, defining rotation angular velocity less  
+float rotationThreshold = 1;      // because of gyro drifting, defining rotation angular velocity less  
 float angularVelocity = 0;
                                                        // than this value will be ignored 
 int timeElapsed = 0;
@@ -130,6 +130,8 @@ int gyroTime = 0;
 float gyroRate = 0;                      // read out value of sensor in voltage   
 float angleChange = 0;
 float currentAngle = 0;               // current angle calculated by angular velocity integral on  
+float gyroCorrection = 0;
+const float Kp_gyro = 30;
 
 float radiansAngle = 0;
 //----Gyro----
@@ -161,7 +163,7 @@ float l = 009.078;
 float R_w = 002.54;
 
 float velocity[3] = {0,0,0};
-float max_velocity[3] = {20,15,1.5}; // cm/s
+float max_velocity[3] = {25,20,1.5}; // cm/s
 float ang_vel[4] = {0,0,0,0};
 
 float motor_speed_Value[4] = {0,0,0,0};
@@ -177,11 +179,11 @@ float rateError[3] = {0,0,0};
 float Pterm[3], Iterm[3], Dterm[3];
 
 // PID VALUES FOR X AND Y NEED TO BE TUNED AND TESTED - TURNING SHOULD BE FINE
-float Kp_r[3] = {1.5,2,1.65};
-float Ki_r[3] = {0.018,0.02,0.05};
+float Kp_r[3] = {1.6,2,1.65};
+float Ki_r[3] = {0.016,0.015,0.05};
 float Kd_r[3] = {0,0,0};
 
-float Kp_straight = 45; // SHOULD BE TUNED
+float Kp_straight = 40; // SHOULD BE TUNED
 float Kp_turn = 500;
 float Kp_align = 80; // gain for aligning to wall
 
@@ -208,8 +210,12 @@ void setup(void)
   pinMode(echoPin, INPUT); // Sets the echoPin as an Input
 
   // Setup the Serial port and pointer, the pointer allows switching the debug info through the USB port(Serial) or Bluetooth port(Serial1) with ease.
-  SerialCom = &Serial;
-  SerialCom->begin(115200);
+//  SerialCom = &Serial;
+//  SerialCom->begin(115200);
+
+  Serial.begin(115200);
+
+  BluetoothSerial.begin(115200);
 }
 
 void loop(void) //main loop
@@ -349,11 +355,20 @@ RUN_STATE find_corner() { // Drives robot to TL or BR corner
 //    corner_short();
 //    SHORT = false;
 //  }
+  while(1) {
+    BluetoothSerial.println("test");
+    delay(100);
+  }
+  //driveXYZ(185,20,0); // ITS AS GOOD AS CONTROLLER SCRIPT - NEEDS TUNING
+  //delay(500);
+  //driveXYZ(185,30,0); // ITS AS GOOD AS CONTROLLER SCRIPT - NEEDS TUNING
+  delay(5000);
+    //IR_Sensors();
+//    Serial.println(IR_LONG_1_DIST);
+//    Serial.println(IR_LONG_2_DIST);
+//    Serial.println(" ");
 
 
-  driveXYZ(20,20,0); // ITS AS GOOD AS CONTROLLER SCRIPT - NEEDS TUNING
-  delay(500);
-  driveXYZ(40,20,0); // ITS AS GOOD AS CONTROLLER SCRIPT - NEEDS TUNING
  
   stop();
 
@@ -365,7 +380,7 @@ RUN_STATE forward() {
   
   align_back(); // align mid range IRs to back wall before starting 
 
-  Serial.println("Got ot here");
+  //Serial.println("Got ot here");
   
   delay(200);
 
@@ -434,7 +449,17 @@ RUN_STATE turn() {
   
   //rotate(90);
   driveXYZ(0, 0, PI/2);
+  delay(100);
+  
+  align();
+  delay(100);
+  
   driveXYZ(45, 20, 0);
+  delay(100);
+  
+  align();
+  delay(100);
+  
   driveXYZ(0, 0, PI/2);
   //rotate(90); 
 
@@ -447,7 +472,7 @@ RUN_STATE complete() {
 }
 
 void orient() { // initial orienting of robot parallel to wall using IR
-  float ir1_dist, ir2_dist, ratio;
+  float ir1_dist, ir2_dist, ratio, ultradist;
   
   // while robot is not parallel to wall
   while(!parallel) {
@@ -459,6 +484,8 @@ void orient() { // initial orienting of robot parallel to wall using IR
     
     // if both IRs are within 55cm
     if(ir1_dist < 58 && ir2_dist < 58) {
+
+      Ultrasound();
       
       // calculate ratio between IR distances
       if(ir1_dist < ir2_dist) {
@@ -643,7 +670,7 @@ void driveXYZ(float x, float y, float z) { // Drives robot straight in x, y, and
 
   reference[0] = x;
   reference[1] = y;  
-  reference[2] = z;
+  reference[2] = z * (PI/180);
 
   while(DRIVING) {
     Controller(); // CONTROL LOOP
@@ -735,7 +762,7 @@ void Controller(){
   }
 
   if(reference[1] == 0){
-    Serial.println("HereTest");
+    //Serial.println("HereTest");
     error[1] = 0;
   }
   else{
@@ -758,7 +785,7 @@ void Controller(){
   set_motors();
 
   // exit loop
-  if((abs(error[0]) + abs(error[1])) < 1.0 && (reference[2] == 0)) { // XY exit condition - SHOULD BE TWEAKED
+  if((abs(error[0]) + abs(error[1])) < 2.0 && (reference[2] == 0)) { // XY exit condition - SHOULD BE TWEAKED
     DRIVING = false;
     return;
   }
@@ -768,7 +795,7 @@ void Controller(){
     return;
   }
   
-  delay(15);
+  delay(10);
 }
 
 void PID_Controller(){
@@ -837,10 +864,17 @@ void set_motor_speed(){
 }
 
 void set_motors() {
+  // IR straight
   left_front_motor.writeMicroseconds(1500 + motor_speed_Value[0] - correction);
   left_rear_motor.writeMicroseconds(1500 + motor_speed_Value[1] - correction);
   right_rear_motor.writeMicroseconds(1500 + motor_speed_Value[2] - correction);
   right_front_motor.writeMicroseconds(1500 + motor_speed_Value[3] - correction);
+
+  // gyro straight
+  left_front_motor.writeMicroseconds(1500 + motor_speed_Value[0] - gyroCorrection);
+  left_rear_motor.writeMicroseconds(1500 + motor_speed_Value[1] - gyroCorrection);
+  right_rear_motor.writeMicroseconds(1500 + motor_speed_Value[2] - gyroCorrection);
+  right_front_motor.writeMicroseconds(1500 + motor_speed_Value[3] - gyroCorrection);
 }
 
 void Ultrasound(){
@@ -876,8 +910,13 @@ void IR_Sensors(){
   
   IR_mid_dist = mid_centre_offset + ((IR_MID_1_DIST + IR_MID_2_DIST) / 2);
   IR_mid_diff = IR_MID_1_DIST - IR_MID_2_DIST;
-  
-  correction = Kp_straight * IR_diff;
+
+  if(abs(IR_diff) > 0.5) {
+    correction = Kp_straight * IR_diff;
+  }
+  else {
+    correction = 0;
+  }
 }
 
 void gyro() { // could be tuned better
@@ -891,6 +930,7 @@ void gyro() { // could be tuned better
   if(angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold) {
     angleChange = angularVelocity * (timeElapsed / 1000.0);
     currentAngle += angleChange;
+    gyroCorrection = currentAngle * Kp_gyro;
     radiansAngle = currentAngle * (PI/180.0);
   }
   
@@ -906,7 +946,7 @@ float IR_dist(IR code) { // find distances using calibration curve equations
   switch(code) {
     case LEFT_FRONT:
       adc = analogRead(IR_LONG_1);
-      dist = (5780.3)/(pow(adc,1.027));
+      dist = (15000)/(pow(adc,1.178));
       est = Kalman(dist, last_est[0], last_var[0], LEFT_FRONT);
       
       //MA FILTER
@@ -922,7 +962,7 @@ float IR_dist(IR code) { // find distances using calibration curve equations
       break;
     case LEFT_BACK:
       adc = analogRead(IR_LONG_2);
-      dist = (4382.9)/(pow(adc,0.984));
+      dist = (15000)/(pow(adc,1.172));
       est = Kalman(dist, last_est[1], last_var[1], LEFT_BACK);
       
       //MA FILTER
