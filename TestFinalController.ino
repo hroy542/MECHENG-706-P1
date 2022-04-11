@@ -1,6 +1,3 @@
-// GOING TO CORNER - START
-// REQUIRES DECENTLY ACCURATE GYRO - DOESNT NEED TO BE PERFECT (CAN ALIGN parallel USING IRS) 
-
 #include <Servo.h>  //Need for Servo pulse output
 #include <SoftwareSerial.h>
 
@@ -354,8 +351,8 @@ RUN_STATE find_corner() { // Drives robot to TL or BR corner
 //  }
 
 
- driveXYZ(20,20,0); // ITS AS GOOD AS CONTROLLER SCRIPT - NEEDS TUNING
- delay(500);
+  driveXYZ(20,20,0); // ITS AS GOOD AS CONTROLLER SCRIPT - NEEDS TUNING
+  delay(500);
   driveXYZ(40,20,0); // ITS AS GOOD AS CONTROLLER SCRIPT - NEEDS TUNING
  
   stop();
@@ -368,7 +365,7 @@ RUN_STATE forward() {
   
   align_back(); // align mid range IRs to back wall before starting 
 
-    Serial.println("Got ot here");
+  Serial.println("Got ot here");
   
   delay(200);
 
@@ -725,34 +722,35 @@ void Controller(){
   Ultrasound();
   IR_Sensors();
 
-//----Replacement for stuff in DriveXYZ----
-  
-  if(reference[0]==0){
-    error[0]=0;
+  //----Replacement for stuff in DriveXYZ----
+
+  if(reference[0] == 0){
+    error[0] = 0;
   }
   else if(reference[0] == 185 && IR_mid_dist < 30) {
     error[0] = IR_mid_dist - 15.0;
   }
- else {
+  else {
     error[0] = reference[0] - Ultradistance;
-   }
+  }
 
-if(reference[1]==0){
-  Serial.println("HereTest");
-  error[1] = 0;
-}else{
-  error[1] = reference[1] - IR_wall_dist;
-}
+  if(reference[1] == 0){
+    Serial.println("HereTest");
+    error[1] = 0;
+  }
+  else{
+    error[1] = reference[1] - IR_wall_dist;
+  }
 
-if(reference[2]==0){
-  error[2] = 0;
-}else {
-  error[2] = reference[2] - radiansAngle;
-}
+  if(reference[2] == 0){
+    error[2] = 0;
+  }
+  else {
+    error[2] = reference[2] - radiansAngle;
+    correction = 0;
+  }
 
-//----Replacement for stuff in DriveXYZ----
-
-
+  //----Replacement for stuff in DriveXYZ----
 
   PID_Controller();
   inverse_kinematics();
@@ -760,11 +758,11 @@ if(reference[2]==0){
   set_motors();
 
   // exit loop
-  if((abs(error[0]) + abs(error[1])) < 1.0 && (reference[2]==0)) { // XY exit condition - SHOULD BE TWEAKED
+  if((abs(error[0]) + abs(error[1])) < 1.0 && (reference[2] == 0)) { // XY exit condition - SHOULD BE TWEAKED
     DRIVING = false;
     return;
   }
-  else if(abs(error[2]) < 0.1 && (!(reference[2]==0))) { // turning exit condition
+  else if(abs(error[2]) < 0.1 && (!(reference[2] == 0))) { // turning exit condition
     DRIVING = false;
     currentAngle = 0;
     return;
@@ -779,51 +777,50 @@ void PID_Controller(){
   elapsedTime = (currentTime - previousTime)/1000.0; 
  
   //if((currentTime - previousTime) >= pid_sample_time || (pid_first_call)) { // sampled at 20Hz
-    for (int i = 0; i < 3; i++){
-  
-      Pterm[i] = Kp_r[i] * error[i];
-      Iterm[i] += Ki_r[i] * error[i] * elapsedTime;
-      Dterm[i] = Kd_r[i] * ((error[i] - lastError[i]) / elapsedTime);
+  for (int i = 0; i < 3; i++){
 
-      // anti wind-up - Iterm and Pterm (More powerful anti windup - constrains total control effort to always be <= max velocity)
-      if(abs(Pterm[i]) > max_velocity[i]) {
-        
-        // constrains Iterm such that Pterm + Iterm <= maximum velocity
-        if(Pterm[i] < 0) {
-          Pterm[i] = (-1 * max_velocity[i]);
-        }
-        else {
-          Pterm[i] = max_velocity[i];
-        }
+    Pterm[i] = Kp_r[i] * error[i];
+    Iterm[i] += Ki_r[i] * error[i] * elapsedTime;
+    Dterm[i] = Kd_r[i] * ((error[i] - lastError[i]) / elapsedTime);
+
+    // anti wind-up - Iterm and Pterm (More powerful anti windup - constrains total control effort to always be <= max velocity)
+    if(abs(Pterm[i]) > max_velocity[i]) {
+
+      // constrains Iterm such that Pterm + Iterm <= maximum velocity
+      if(Pterm[i] < 0) {
+        Pterm[i] = (-1 * max_velocity[i]);
       }
-      if(abs(Iterm[i] + Pterm[i]) > max_velocity[i]) {
-        
-        // constrains Iterm such that Pterm + Iterm <= maximum velocity
-        if((Iterm[i] + Pterm[i]) < 0) {
-          Iterm[i] = (-1 * max_velocity[i]) - Pterm[i];
-        }
-        else {
-          Iterm[i] = max_velocity[i] - Pterm[i];
-        }
+      else {
+        Pterm[i] = max_velocity[i];
       }
-  
-      velocity[i] = Pterm[i] + Iterm[i] + Dterm[i];
-      
-      // constrain to max velocity - just to ensure velocity <= maximum velocity
-      if(abs(velocity[i]) > max_velocity[i]) {
-        if(velocity[i] < 0) {
-          velocity [i] = -1 * max_velocity[i];
-        }
-        else {
-          velocity [i] = max_velocity[i];
-        }
-      }
-          
-      lastError[i] = error[i];                                                
     }
+    if(abs(Iterm[i] + Pterm[i]) > max_velocity[i]) {
+
+      // constrains Iterm such that Pterm + Iterm <= maximum velocity
+      if((Iterm[i] + Pterm[i]) < 0) {
+        Iterm[i] = (-1 * max_velocity[i]) - Pterm[i];
+      }
+      else {
+        Iterm[i] = max_velocity[i] - Pterm[i];
+      }
+    }
+
+    velocity[i] = Pterm[i] + Iterm[i] + Dterm[i];
+
+    // constrain to max velocity - just to ensure velocity <= maximum velocity
+    if(abs(velocity[i]) > max_velocity[i]) {
+      if(velocity[i] < 0) {
+        velocity [i] = -1 * max_velocity[i];
+      }
+      else {
+        velocity [i] = max_velocity[i];
+      }
+    }
+
+    lastError[i] = error[i];                                                
+  }
     //pid_first_call = false;
-    previousTime = currentTime; 
-  //}
+  previousTime = currentTime; 
 }
 
 void inverse_kinematics(){
@@ -835,7 +832,7 @@ void inverse_kinematics(){
 
 void set_motor_speed(){
   for (int i = 0; i < 4; i++){
-    motor_speed_Value[i] = ang_vel[i] * 30; // scale angular velocity to motor speed value - COULD BE TUNED BETTER
+    motor_speed_Value[i] = ang_vel[i] * 28; // scale angular velocity to motor speed value - COULD BE TUNED BETTER
   }
 }
 
@@ -850,14 +847,15 @@ void Ultrasound(){
   //ultra_time = millis();
   
   //if((ultra_time - prev_ultra_time) >= ultra_sampling_time || (ultra_first_call)) { //20Hz
-    digitalWrite(trigPin, LOW);
-    delayMicroseconds(2);
-    digitalWrite(trigPin, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(trigPin, LOW);
-    Ultraduration = pulseIn(echoPin, HIGH);
-    // Calculating the distance
-    Ultradistance = ultra_centre_offset + (Ultraduration * 0.034 / 2);
+  
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  Ultraduration = pulseIn(echoPin, HIGH);
+  // Calculating the distance
+  Ultradistance = ultra_centre_offset + (Ultraduration * 0.034 / 2);
 
    // prev_ultra_time = ultra_time;
    // ultra_first_call = false;
