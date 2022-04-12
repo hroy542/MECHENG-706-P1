@@ -179,13 +179,14 @@ float rateError[3] = {0,0,0};
 float Pterm[3], Iterm[3], Dterm[3];
 
 // PID VALUES FOR X AND Y NEED TO BE TUNED AND TESTED - TURNING SHOULD BE FINE
-float Kp[3] = {2,2,1.65};
-float Ki[3] = {0.03,0.015,0.05};
+float Kp[3] = {2,1.8,1.65};
+float Ki[3] = {0.05,0.015,0.05};
 float Kd[3] = {0,0,0};
 
 float Kp_straight = 40; // SHOULD BE TUNED
 float Kp_turn = 500;
-float Kp_align = 80; // gain for aligning to wall
+float Kp_align = 90; // gain for aligning to wall
+float Ki_align = 1;
 
 //const int pid_sample_time = 40; // 40ms sampling period - 20Hz
 //bool pid_first_call = true;
@@ -330,13 +331,16 @@ RUN_STATE find_corner() { // Drives robot to TL or BR corner
   */
     
   orient(); // initial orient of robot parallel to wall
-
   delay(500);
-
   
-  float wall_dist = (0.63 * IR_dist(LEFT_FRONT)) + (0.37 * IR_dist(LEFT_BACK));
+  float wall_dist;
+  float prevTime = millis();
+  
+  while(millis() - prevTime < 50) {
+    wall_dist = long_centre_offset + (0.63 * IR_dist(LEFT_FRONT)) + (0.37 * IR_dist(LEFT_BACK));
+  }
 
-  switch_back_count = 1;
+  switch_back_count = 1; // make it so uses the gyro to keep straight
   
   driveXYZ(20, wall_dist, 0);
 
@@ -356,7 +360,7 @@ RUN_STATE find_corner() { // Drives robot to TL or BR corner
   }
 
   switch_back_count = 0;
-  return FORWARD;
+    return FORWARD;
 }
 
 RUN_STATE forward() {
@@ -503,9 +507,8 @@ void find_side() { // determine whether on short or long side of rectangle
 
   delay(200);
   Ultrasound();
-  BluetoothSerial.println(Ultradistance);
-  //ultra_first_call = true;
-
+  //BluetoothSerial.println(Ultradistance);
+  
   delay(200);
 
   // if ultrasonic detects > 160 cm - robot on short side
@@ -543,51 +546,18 @@ void corner_long() { // drives robot to corner if on long side
 }
 
 void corner_short() { // drives robot to corner if on short side
-  BluetoothSerial.println("short");
+  //BluetoothSerial.println("short");
   
   driveXYZ(0, 0, -90); // rotate ccw
   delay(100);
   
-  driveXYZ(15, 20, 0); // strafe left into starting position
+  driveXYZ(15, 20, 0); // drive straight to wall
   delay(100);
   
-  driveXYZ(0, 0, 90); // rotate cw
+  driveXYZ(0, 0, 90); // rotate cw into starting position
   
   align_back(); // NOTE COULD REPLACE ALIGN_BACK() WITH ALIGN() - DEPENDS WHATS MORE RELIABLE
 }
-
-//void align_controller() { // uses long range IRs with gain to align robot to wall - P CONTROLLER - NEEDS MORE TESTING
-//  float ir1_dist, ir2_dist, diff, power;
-//  float alignment_threshold = 0.2;
-//
-//  // read long range IRs
-//  ir1_dist = IR_dist(LEFT_FRONT);
-//  ir2_dist = IR_dist(LEFT_BACK);
-//
-//  // if already aligned return
-//  if(abs(ir1_dist - ir2_dist) <= alignment_threshold) {
-//    return;
-//  }
-//
-//  // update IR distances until aligned
-//  do {
-//    ir1_dist = IR_dist(LEFT_FRONT);
-//    ir2_dist = IR_dist(LEFT_BACK);
-//    
-//    diff = ir1_dist - ir2_dist;
-//    power = Kp_align * diff;
-//    
-//    // send power
-//    left_front_motor.writeMicroseconds(1500 - power);
-//    left_rear_motor.writeMicroseconds(1500 - power);
-//    right_front_motor.writeMicroseconds(1500 - power);
-//    right_rear_motor.writeMicroseconds(1500 - power);
-//       
-//  } while(abs(diff) >= alignment_threshold);
-//
-//  stop(); // stop motors
-//  return;
-//}
   
 void align() { // uses long range IRs to align robot to wall
   float ir1_dist, ir2_dist;
@@ -628,6 +598,31 @@ void align_back() { //uses mid range IRs to align to wall - COULD ALSO IMPLEMENT
     }
     
   } while(abs(ir1_dist - ir2_dist) >= alignment_threshold);
+
+  stop(); // stop motors
+  return;
+}
+
+void align_controller() { // uses mid range IRs to align with wall.
+  float ir1_dist, ir2_dist, error, power, Iterm;
+  float alignment_threshold = 0.05;
+
+  // update IR distances until aligned
+  do {
+    ir1_dist = IR_dist(LEFT_FRONT);
+    ir2_dist = IR_dist(LEFT_BACK);
+    
+    error = ir1_dist - ir2_dist;
+    Iterm += error * Ki_align;
+    power = (Kp_align * error) + Iterm;
+    
+    // send power
+    left_front_motor.writeMicroseconds(1500 - power);
+    left_rear_motor.writeMicroseconds(1500 - power);
+    right_front_motor.writeMicroseconds(1500 - power);
+    right_rear_motor.writeMicroseconds(1500 - power);
+       
+  } while(abs(error) >= alignment_threshold);
 
   stop(); // stop motors
   return;
@@ -687,7 +682,7 @@ void Controller(){
   else if(reference[0] == 180) {
     // change gains for reversing
     Kp[0] = 1;
-    Ki[0] = 0.01;
+    Ki[0] = 0.005;
     
     if(IR_mid_dist < 37) {
       error[0] = IR_mid_dist - 15.0;
@@ -725,7 +720,7 @@ void Controller(){
   set_motors();
 
   // exit loop
-  if((abs(error[0]) + abs(error[1])) < 2.5 && (reference[2] == 0)) { // XY exit condition - SHOULD BE TWEAKED
+  if((abs(error[0]) + abs(error[1])) < 3 && (reference[2] == 0)) { // XY exit condition - SHOULD BE TWEAKED
     DRIVING = false;
     return;
   }
@@ -771,6 +766,18 @@ void PID_Controller(){
       }
     }
 
+//    // OTHER ANTI-WINDUP - TUNE PID VALUES
+//    if(abs(Iterm[i]) > max_velocity[i]) {
+//
+//      // constrains Iterm such that Pterm + Iterm <= maximum velocity
+//      if(Iterm[i] < 0) {
+//        Iterm[i] = (-1 * max_velocity[i]);
+//      }
+//      else {
+//        Iterm[i] = max_velocity[i];
+//      }
+//    }
+    
     velocity[i] = Pterm[i] + Iterm[i] + Dterm[i];
 
     // constrain to max velocity - just to ensure velocity <= maximum velocity
