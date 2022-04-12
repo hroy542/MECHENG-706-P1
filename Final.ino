@@ -50,11 +50,8 @@ SoftwareSerial BluetoothSerial(BLUETOOTH_RX, BLUETOOTH_TX);
 const int trigPin = 34;
 const int echoPin = 35;
 float Ultraduration;
+float Ultradistance;
 const float ultra_centre_offset = 11.0;
-//const int ultra_sampling_time = 40; //40ms sampling time
-//int ultra_time;
-//int prev_ultra_time;
-//bool ultra_first_call = true;
 //----Ultrasound----
 
 //----IR----
@@ -92,8 +89,6 @@ float IR_mid_diff = 0;
 float IR_mid_dist = 0;
 const float mid_centre_offset = 7.0;
 //----IR----
-
-float Ultradistance;
 
 //----IR Kalman Filter----
 float last_est[4] = {0,0,0,0};
@@ -144,9 +139,9 @@ bool SHORT = false;
 
 //----Driving----
 bool DRIVING = false;
-bool ignore_x = false;
-bool ignore_y = false;
-bool ignore_z = false;
+bool corner_finished = false;
+bool is_turning = false;
+bool is_driving_middle = false;
 //----Driving----
 
 // Anything over 400 cm (23200 us pulse) is "out of range". Hit:If you decrease to this the ranging sensor but the timeout is short, you may not need to read up to 4meters.
@@ -185,17 +180,18 @@ float Kd[3] = {0,0,0};
 
 float Kp_straight = 40; // SHOULD BE TUNED
 float Kp_turn = 500;
-float Kp_align = 90; // gain for aligning to wall
-float Ki_align = 1;
+float Kp_align = 60; // gain for aligning to wall
+float Ki_align = 0.1;
 
 //const int pid_sample_time = 40; // 40ms sampling period - 20Hz
 //bool pid_first_call = true;
 //----PIDValues----
 
 //----Localisation----
-const int local_sample_time = 250; //4Hz sampling frequency for coordinates
+const int local_sample_time = 400; //2.5Hz sampling frequency for coordinates
 int local_time = 0;
 int prev_local_time = 0;
+float currentPos[2] = {0,0}; // x,y
 //----Localisation----
 
 
@@ -329,12 +325,12 @@ RUN_STATE find_corner() { // Drives robot to TL or BR corner
   7. If short side, reverse 5cm using ultrasonic sensor
   8. Strafe left into starting position (15cm from wall) ensuring alignment using all IRs
   */
-    
+  
   orient(); // initial orient of robot parallel to wall
   delay(500);
   
   float wall_dist;
-  float prevTime = millis();
+  int prevTime = millis();
   
   while(millis() - prevTime < 50) {
     wall_dist = long_centre_offset + (0.63 * IR_dist(LEFT_FRONT)) + (0.37 * IR_dist(LEFT_BACK));
@@ -360,7 +356,8 @@ RUN_STATE find_corner() { // Drives robot to TL or BR corner
   }
 
   switch_back_count = 0;
-    return FORWARD;
+  corner_finished = true;
+  return FORWARD;
 }
 
 RUN_STATE forward() {
@@ -441,8 +438,10 @@ RUN_STATE turn() {
   
   align();
   delay(100);
-  
+
+  is_driving_middle = true;
   driveXYZ(45, 20, 0);
+  is_driving_middle = false;
   delay(100);
   
   align();
@@ -461,19 +460,26 @@ RUN_STATE complete() {
 
 void orient() { // initial orienting of robot parallel to wall using IR
   float ir1_dist, ir2_dist, ratio, ultradist;
+  int prevTime = millis();
+  int ultratime = 0;
   
   // while robot is not parallel to wall
   while(!parallel) {
-    ccw(90); // rotate CCW
     
-    // get distances for both IRs
+    // allow IRs to reach steady state
+    while(millis() - prevTime < 50) {
+      ir1_dist = IR_dist(LEFT_FRONT);
+      ir2_dist = IR_dist(LEFT_BACK);
+    }
+
+    // update IRs
     ir1_dist = IR_dist(LEFT_FRONT);
     ir2_dist = IR_dist(LEFT_BACK);
-    
-    // if both IRs are within 55cm
-    if(ir1_dist < 55 && ir2_dist < 55) {
 
-      Ultrasound();
+    ccw(90); // rotate CCW
+    
+    // if both IRs are within 60cm
+    if(ir1_dist < 60 && ir2_dist < 60) {
       
       // calculate ratio between IR distances
       if(ir1_dist < ir2_dist) {
@@ -487,9 +493,14 @@ void orient() { // initial orienting of robot parallel to wall using IR
       if(ratio >= 0.95) {
         stop();
         delay(100);
-       
-        align(); // align to ensure fully parallel
-        parallel = true; 
+        Ultrasound();
+        if(Ultradistance > 80) {
+          parallel = false;
+        }
+        else {
+          parallel = true;
+          align();
+        }
       }
     }
   }
@@ -542,7 +553,7 @@ void corner_long() { // drives robot to corner if on long side
   driveXYZ(Ultradistance, 15, 0); // strafe left until 15cm from wall
   delay(100);
 
-  align_back(); // NOTE COULD REPLACE ALIGN_BACK() WITH ALIGN() - DEPENDS WHATS MORE RELIABLE
+  align(); // NOTE COULD REPLACE ALIGN_BACK() WITH ALIGN() - DEPENDS WHATS MORE RELIABLE
 }
 
 void corner_short() { // drives robot to corner if on short side
@@ -556,15 +567,20 @@ void corner_short() { // drives robot to corner if on short side
   
   driveXYZ(0, 0, 90); // rotate cw into starting position
   
-  align_back(); // NOTE COULD REPLACE ALIGN_BACK() WITH ALIGN() - DEPENDS WHATS MORE RELIABLE
+  align(); // NOTE COULD REPLACE ALIGN_BACK() WITH ALIGN() - DEPENDS WHATS MORE RELIABLE
 }
   
 void align() { // uses long range IRs to align robot to wall
   float ir1_dist, ir2_dist;
-  float alignment_threshold = 0.2; // IRs within 0.2cm of one another - SHOULD BE TWEAKED
+  float alignment_threshold = 0.15; // IRs within 0.2cm of one another - SHOULD BE TWEAKED
+  int prevTime = millis();
 
-  // update IR distances until aligned
-  do {
+  while(millis() - prevTime < 50) {
+    ir1_dist = IR_dist(LEFT_FRONT);
+    ir2_dist = IR_dist(LEFT_BACK);
+  }
+
+  while(abs(ir1_dist - ir2_dist) >= alignment_threshold) {
     ir1_dist = IR_dist(LEFT_FRONT);
     ir2_dist = IR_dist(LEFT_BACK);
     
@@ -574,8 +590,7 @@ void align() { // uses long range IRs to align robot to wall
     else {
       cw(70);
     }
-       
-  } while(abs(ir1_dist - ir2_dist) >= alignment_threshold);
+  }
 
   stop(); // stop motors
   return;
@@ -583,10 +598,15 @@ void align() { // uses long range IRs to align robot to wall
 
 void align_back() { //uses mid range IRs to align to wall - COULD ALSO IMPLEMENT BETTER CONTROL (P CONTROL)
   float ir1_dist, ir2_dist;
-  float alignment_threshold = 0.05;
+  float alignment_threshold = 0.02;
+  int prevTime = millis();
 
-  // update IR distances until aligned
-  do {
+  while(millis() - prevTime < 50) {
+    ir1_dist = IR_dist(BACK_LEFT);
+    ir2_dist = IR_dist(BACK_RIGHT);
+  }
+
+  while(abs(ir1_dist - ir2_dist) >= alignment_threshold) {
     ir1_dist = IR_dist(BACK_LEFT);
     ir2_dist = IR_dist(BACK_RIGHT);
     
@@ -596,37 +616,52 @@ void align_back() { //uses mid range IRs to align to wall - COULD ALSO IMPLEMENT
     else {
       cw(70);
     }
-    
-  } while(abs(ir1_dist - ir2_dist) >= alignment_threshold);
+  }
 
   stop(); // stop motors
   return;
 }
 
-void align_controller() { // uses mid range IRs to align with wall.
-  float ir1_dist, ir2_dist, error, power, Iterm;
-  float alignment_threshold = 0.05;
-
-  // update IR distances until aligned
-  do {
-    ir1_dist = IR_dist(LEFT_FRONT);
-    ir2_dist = IR_dist(LEFT_BACK);
-    
-    error = ir1_dist - ir2_dist;
-    Iterm += error * Ki_align;
-    power = (Kp_align * error) + Iterm;
-    
-    // send power
-    left_front_motor.writeMicroseconds(1500 - power);
-    left_rear_motor.writeMicroseconds(1500 - power);
-    right_front_motor.writeMicroseconds(1500 - power);
-    right_rear_motor.writeMicroseconds(1500 - power);
-       
-  } while(abs(error) >= alignment_threshold);
-
-  stop(); // stop motors
-  return;
-}
+//void align_controller() { // uses mid range IRs to align with wall.
+//  float ir1_dist, ir2_dist, error, power, Iterm;
+//  float alignment_threshold = 0.02;
+//  int prevTime = millis();
+//
+//  // update IR distances until aligned
+//  do {
+//
+//    while(millis() - prevTime < 50) {
+//      ir1_dist = IR_dist(LEFT_FRONT);
+//      ir2_dist = IR_dist(LEFT_BACK);
+//    }
+//
+//    ir1_dist = IR_dist(LEFT_FRONT);
+//    ir2_dist = IR_dist(LEFT_BACK);
+//    
+//    error = ir1_dist - ir2_dist;
+//    Iterm += error * Ki_align;
+//    power = (Kp_align * error) + Iterm;
+//
+//    if(power > 80) {
+//      power = 80;
+//    }
+//    else if(power < -80) {
+//      power = -80;
+//    }
+//    
+//    // send power
+//    left_front_motor.writeMicroseconds(1500 - power);
+//    left_rear_motor.writeMicroseconds(1500 - power);
+//    right_front_motor.writeMicroseconds(1500 - power);
+//    right_rear_motor.writeMicroseconds(1500 - power);
+//
+//    delay(20);
+//       
+//  } while(1);//abs(error) >= alignment_threshold);
+//
+//  stop(); // stop motors
+//  return;
+//}
 
 void driveXYZ(float x, float y, float z) { // Drives robot straight in x, y, and z // turning only occurs by itself i.e. no x and y
   DRIVING = true;
@@ -638,6 +673,8 @@ void driveXYZ(float x, float y, float z) { // Drives robot straight in x, y, and
   while(DRIVING) {
     Controller(); // CONTROL LOOP
   }
+
+  is_turning = false;
 
   stop(); // stop motors
 }
@@ -670,9 +707,34 @@ void cw(int speedval)
 //----OPEN LOOP DRIVING FUNCTIONS----
 
 void Controller(){
+  
+  local_time = millis();
+ 
   gyro();
   Ultrasound();
   IR_Sensors();
+
+  if(corner_finished && (local_time - prev_local_time >= local_sample_time)) {
+    if(!turned && !is_turning) {
+      currentPos[0] = 200 - Ultradistance;
+      currentPos[1] = IR_wall_dist;
+    }
+    else if(!is_driving_middle && !is_turning) {
+      currentPos[0] = Ultradistance;
+      currentPos[1] = 120 - IR_wall_dist;
+    }
+    else if(is_turning){ }// is turning 
+    else if(is_driving_middle) {
+      currentPos[0] = 200 - IR_wall_dist;
+      currentPos[1] = 120 - Ultradistance;
+    }
+
+    BluetoothSerial.print(currentPos[0]);
+    BluetoothSerial.print(", ");
+    BluetoothSerial.println(currentPos[1]);
+    
+    prev_local_time = local_time;
+  }
 
   //----Replacement for stuff in DriveXYZ----
 
@@ -707,6 +769,7 @@ void Controller(){
     error[2] = 0;
   }
   else {
+    is_turning = true;
     error[2] = reference[2] - radiansAngle;
     correction = 0;
     gyroCorrection = 0;
@@ -720,7 +783,7 @@ void Controller(){
   set_motors();
 
   // exit loop
-  if((abs(error[0]) + abs(error[1])) < 3 && (reference[2] == 0)) { // XY exit condition - SHOULD BE TWEAKED
+  if((abs(error[0]) + abs(error[1])) <= 2.75 && (reference[2] == 0)) { // XY exit condition - SHOULD BE TWEAKED
     DRIVING = false;
     return;
   }
@@ -730,7 +793,7 @@ void Controller(){
     return;
   }
   
-  delay(10);
+  delay(9);
 }
 
 void PID_Controller(){
@@ -839,6 +902,8 @@ void Ultrasound(){
 }
 
 void IR_Sensors(){
+  // MIGHT NEED TO HAVE A WHILE LOOP TO ENSURE IR DISTANCES REACH STEADY STATE (~50MS) WHEN DRIVEXYZ FIRST CALLED
+  
   // Get distances from left side of robot to wall
   IR_LONG_1_DIST = IR_dist(LEFT_FRONT);
   IR_LONG_2_DIST = IR_dist(LEFT_BACK);
