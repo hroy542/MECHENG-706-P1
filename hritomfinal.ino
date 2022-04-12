@@ -974,6 +974,8 @@ float IR_dist(IR code) { // find distances using calibration curve equations
         est = averaged[0];
         last_est[0] = averaged[0];
         //MA FILTER
+      } else {
+        est = last_est[0];
       }
       break;
     case LEFT_BACK:
@@ -992,6 +994,8 @@ float IR_dist(IR code) { // find distances using calibration curve equations
       est = averaged[1];
       last_est[1] = averaged[1];
       //MA FILTER
+      } else {
+        est = last_est[1];
       }
       break;
     case BACK_LEFT:
@@ -1009,6 +1013,8 @@ float IR_dist(IR code) { // find distances using calibration curve equations
       est = averaged[2];
       last_est[2] = averaged[2];
       //MA FILTER
+      } else {
+        est = last_est[2];
       }
       break;
     case BACK_RIGHT:
@@ -1026,6 +1032,8 @@ float IR_dist(IR code) { // find distances using calibration curve equations
       est = averaged[3];
       last_est[3] = averaged[3];
       //MA FILTER
+      } else {
+        est = last_est[3];
       }
       break;
   }
