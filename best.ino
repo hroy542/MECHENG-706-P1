@@ -352,6 +352,7 @@ RUN_STATE forward() { // COULD INCREASE Y CONTROLLER GAINS TO KEEP BETTER DISTAN
   Kp_gyro = 30;
   max_velocity[0] = 28;
 
+  delay(50);
   align_back();
   delay(100);
 
@@ -363,7 +364,7 @@ RUN_STATE forward() { // COULD INCREASE Y CONTROLLER GAINS TO KEEP BETTER DISTAN
   }
   else {
     if (switch_back_count == 0) {
-      driveXYZ(20, 17, 0);
+      driveXYZ(20, 16, 0);
     }
     else {
       driveXYZ(20, 0, 0);
@@ -394,7 +395,7 @@ RUN_STATE reverse() { // COULD INCREASE Y CONTROLLER GAINS TO KEEP BETTER DISTAN
   if (turned) {
     if (switch_back_count == 8) {
       Kp_straight = 55;
-      max_velocity[1] = 22;
+      max_velocity[1] = 21;
       driveXYZ(180, 17, 0);
     }
     else {
@@ -573,8 +574,6 @@ void corner_long() { // drives robot to corner if on long side
 
   driveXYZ(183, 15, 0); // reverse until 20cm from wall (starting position)
   delay(50);
-
-  //align(); // NOTE COULD REPLACE ALIGN_BACK() WITH ALIGN() - DEPENDS WHATS MORE RELIABLE
 }
 
 void corner_short() { // drives robot to corner if on short side
@@ -583,7 +582,10 @@ void corner_short() { // drives robot to corner if on short side
   driveXYZ(0, 0, -90); // rotate ccw
   delay(50);
 
-  driveXYZ(18, 20, 0); // drive straight to wall
+  align();
+  delay(50);
+
+  driveXYZ(15, 18, 0); // drive straight to wall
   delay(50);
 
   driveXYZ(0, 0, 90); // rotate cw into starting position
@@ -925,7 +927,7 @@ void IR_Sensors() {
   IR_mid_dist = mid_centre_offset + ((IR_MID_1_DIST + IR_MID_2_DIST) / 2);
   IR_mid_diff = IR_MID_1_DIST - IR_MID_2_DIST;
 
-  if (abs(IR_diff) > 0.25 && (accelerated)) {
+  if (abs(IR_diff) > 0.2 && (accelerated)) {
     correction = Kp_straight * IR_diff;
   }
   else {
