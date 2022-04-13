@@ -180,7 +180,7 @@ float Kp_amplified[3] = {2,3.6,1.65};
 
 // PID VALUES FOR X AND Y NEED TO BE TUNED AND TESTED - TURNING SHOULD BE FINE
 float Kp[3] = {2,1.8,1.65};
-float Ki[3] = {0.05,0.015,0.05};
+float Ki[3] = {0.06,0.015,0.05};
 float Kd[3] = {0,0,0};
 
 float Kp_straight = 40; // SHOULD BE TUNED
@@ -375,10 +375,10 @@ RUN_STATE forward() { // COULD INCREASE Y CONTROLLER GAINS TO KEEP BETTER DISTAN
   delay(200);
   Kp[1] =  Kp_amplified[1];// Assigning the amplified y controller gain
   if(turned) {
-    driveXYZ(20, 45 - ((switch_back_count - 5) * 10), 0); 
+    driveXYZ(15, 45 - ((switch_back_count - 5) * 10), 0); 
   }
   else {
-    driveXYZ(20, 15 + (switch_back_count * 10), 0); 
+    driveXYZ(15, 15 + (switch_back_count * 10), 0); 
   }
 
   if(switch_back_count == 4) {
@@ -417,7 +417,7 @@ RUN_STATE strafe() { // RESET Y CONTROLLER GAINS
 
   if(turned) {
     if(forward_flag) {
-      driveXYZ(20, 45 - ((switch_back_count - 5) * 10), 0);
+      driveXYZ(15, 45 - ((switch_back_count - 5) * 10), 0);
       return REVERSE;
     } 
     else {
@@ -427,7 +427,7 @@ RUN_STATE strafe() { // RESET Y CONTROLLER GAINS
   }
   else {
     if(forward_flag) {
-      driveXYZ(20, 15 + (switch_back_count * 10), 0);
+      driveXYZ(15, 15 + (switch_back_count * 10), 0);
       return REVERSE;
     } 
     else {
@@ -449,7 +449,7 @@ RUN_STATE turn() {
   delay(100);
 
   is_driving_middle = true;
-  driveXYZ(45, 20, 0);
+  driveXYZ(45, 15, 0);
   is_driving_middle = false;
   delay(100);
   
@@ -531,12 +531,12 @@ void find_side() { // determine whether on short or long side of rectangle
   
   delay(200);
 
-  // if ultrasonic detects > 160 cm - robot on short side
+  // if ultrasonic detects > 150 cm - robot on short side
   if(Ultradistance > 150) {
     LONG = false;
     SHORT = true;
   }
-  // if ultrasonic detects < 130 cm - robot on long side
+  // if ultrasonic detects < 120 cm - robot on long side
   else if(Ultradistance < 120) {
     SHORT = false;
     LONG = true;
@@ -581,7 +581,7 @@ void corner_short() { // drives robot to corner if on short side
   
 void align() { // uses long range IRs to align robot to wall
   float ir1_dist, ir2_dist;
-  float alignment_threshold = 0.15; // IRs within 0.2cm of one another - SHOULD BE TWEAKED
+  float alignment_threshold = 0.2; // IRs within 0.2cm of one another - SHOULD BE TWEAKED
   int prevTime = millis();
 
   while(millis() - prevTime < 50) {
@@ -607,7 +607,7 @@ void align() { // uses long range IRs to align robot to wall
 
 void align_back() { //uses mid range IRs to align to wall - COULD ALSO IMPLEMENT BETTER CONTROL (P CONTROL)
   float ir1_dist, ir2_dist;
-  float alignment_threshold = 0.02;
+  float alignment_threshold = 0.03;
   int prevTime = millis();
 
   while(millis() - prevTime < 50) {
@@ -630,47 +630,6 @@ void align_back() { //uses mid range IRs to align to wall - COULD ALSO IMPLEMENT
   stop(); // stop motors
   return;
 }
-
-//void align_controller() { // uses mid range IRs to align with wall.
-//  float ir1_dist, ir2_dist, error, power, Iterm;
-//  float alignment_threshold = 0.02;
-//  int prevTime = millis();
-//
-//  // update IR distances until aligned
-//  do {
-//
-//    while(millis() - prevTime < 50) {
-//      ir1_dist = IR_dist(LEFT_FRONT);
-//      ir2_dist = IR_dist(LEFT_BACK);
-//    }
-//
-//    ir1_dist = IR_dist(LEFT_FRONT);
-//    ir2_dist = IR_dist(LEFT_BACK);
-//    
-//    error = ir1_dist - ir2_dist;
-//    Iterm += error * Ki_align;
-//    power = (Kp_align * error) + Iterm;
-//
-//    if(power > 80) {
-//      power = 80;
-//    }
-//    else if(power < -80) {
-//      power = -80;
-//    }
-//    
-//    // send power
-//    left_front_motor.writeMicroseconds(1500 - power);
-//    left_rear_motor.writeMicroseconds(1500 - power);
-//    right_front_motor.writeMicroseconds(1500 - power);
-//    right_rear_motor.writeMicroseconds(1500 - power);
-//
-//    delay(20);
-//       
-//  } while(1);//abs(error) >= alignment_threshold);
-//
-//  stop(); // stop motors
-//  return;
-//}
 
 void driveXYZ(float x, float y, float z) { // Drives robot straight in x, y, and z // turning only occurs by itself i.e. no x and y
   DRIVING = true;
@@ -732,7 +691,9 @@ void Controller(){
       currentPos[0] = Ultradistance;
       currentPos[1] = 120 - IR_wall_dist;
     }
-    else if(is_turning){ }// is turning 
+    else if(is_turning){ 
+      //do_nothing
+    } 
     else if(is_driving_middle) {
       currentPos[0] = 200 - IR_wall_dist;
       currentPos[1] = 120 - Ultradistance;
@@ -753,9 +714,9 @@ void Controller(){
   else if(reference[0] == 180) {
     // change gains for reversing
     Kp[0] = 1;
-    Ki[0] = 0.005;
+    Ki[0] = 0.003;
     
-    if(IR_mid_dist < 37) {
+    if(IR_mid_dist < 35) {
       error[0] = IR_mid_dist - 15.0;
     }
     else {
@@ -767,7 +728,6 @@ void Controller(){
   }
 
   if(reference[1] == 0){
-    //Serial.println("HereTest");
     error[1] = 0;
   }
   else{
@@ -939,7 +899,7 @@ void gyro() { // could be tuned better
 
   timeElapsed = gyroTime - prev_gyroTime;
   
-  gyroRate = ((analogRead(gyroPin) - 505.0) * gyroSupplyVoltage) / 1024.0; 
+  gyroRate = ((analogRead(gyroPin) - gyroMiddle) * gyroSupplyVoltage) / 1024.0; 
   angularVelocity = gyroRate / gyroSensitivity; // angular velocity in degrees/second
 
   if(angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold) {
