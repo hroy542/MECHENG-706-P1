@@ -186,7 +186,7 @@ float Kp[3] = {2.5, 2.2, 1.65};
 float Ki[3] = {0.1, 0.03, 0.05};
 float Kd[3] = {0, 0, 0};
 
-float Kp_straight = 48; // SHOULD BE TUNED
+float Kp_straight = 45; // SHOULD BE TUNED
 float Kp_turn = 1500;
 //----PIDValues----
 
@@ -363,7 +363,7 @@ RUN_STATE forward() { // COULD INCREASE Y CONTROLLER GAINS TO KEEP BETTER DISTAN
   }
   else {
     if (switch_back_count == 0) {
-      driveXYZ(20, 15, 0);
+      driveXYZ(20, 17, 0);
     }
     else {
       driveXYZ(20, 0, 0);
@@ -393,9 +393,9 @@ RUN_STATE reverse() { // COULD INCREASE Y CONTROLLER GAINS TO KEEP BETTER DISTAN
   //Kp[1] =  Kp_amplified[1];// Assigning the amplified y controller gain
   if (turned) {
     if (switch_back_count == 8) {
-      Kp_straight = 58;
-      max_velocity[1] = 20;
-      driveXYZ(180, 15, 0);
+      Kp_straight = 55;
+      max_velocity[1] = 22;
+      driveXYZ(180, 17, 0);
     }
     else {
       driveXYZ(180, 0, 0);
@@ -925,7 +925,7 @@ void IR_Sensors() {
   IR_mid_dist = mid_centre_offset + ((IR_MID_1_DIST + IR_MID_2_DIST) / 2);
   IR_mid_diff = IR_MID_1_DIST - IR_MID_2_DIST;
 
-  if (abs(IR_diff) > 0.3 && (accelerated)) {
+  if (abs(IR_diff) > 0.25 && (accelerated)) {
     correction = Kp_straight * IR_diff;
   }
   else {
