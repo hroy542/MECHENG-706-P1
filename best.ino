@@ -143,6 +143,7 @@ bool corner_finished = false;
 bool is_turning = false;
 bool is_driving_middle = false;
 bool is_strafing = false;
+bool accelerated = false;
 //----Driving----
 
 // Anything over 400 cm (23200 us pulse) is "out of range". Hit:If you decrease to this the ranging sensor but the timeout is short, you may not need to read up to 4meters.
@@ -185,7 +186,7 @@ float Kp[3] = {2.5, 2.2, 1.65};
 float Ki[3] = {0.1, 0.03, 0.05};
 float Kd[3] = {0, 0, 0};
 
-float Kp_straight = 45; // SHOULD BE TUNED
+float Kp_straight = 48; // SHOULD BE TUNED
 float Kp_turn = 1500;
 //----PIDValues----
 
@@ -392,7 +393,7 @@ RUN_STATE reverse() { // COULD INCREASE Y CONTROLLER GAINS TO KEEP BETTER DISTAN
   //Kp[1] =  Kp_amplified[1];// Assigning the amplified y controller gain
   if (turned) {
     if (switch_back_count == 8) {
-      Kp_straight = 55;
+      Kp_straight = 58;
       max_velocity[1] = 20;
       driveXYZ(180, 15, 0);
     }
@@ -570,7 +571,7 @@ void corner_long() { // drives robot to corner if on long side
   align(); // might not need
   delay(50);
 
-  driveXYZ(180, 15, 0); // reverse until 20cm from wall (starting position)
+  driveXYZ(183, 15, 0); // reverse until 20cm from wall (starting position)
   delay(50);
 
   //align(); // NOTE COULD REPLACE ALIGN_BACK() WITH ALIGN() - DEPENDS WHATS MORE RELIABLE
@@ -582,7 +583,7 @@ void corner_short() { // drives robot to corner if on short side
   driveXYZ(0, 0, -90); // rotate ccw
   delay(50);
 
-  driveXYZ(20, 20, 0); // drive straight to wall
+  driveXYZ(18, 20, 0); // drive straight to wall
   delay(50);
 
   driveXYZ(0, 0, 90); // rotate cw into starting position
@@ -649,7 +650,7 @@ void driveXYZ(float x, float y, float z) { // Drives robot straight in x, y, and
   reference[1] = y;
   reference[2] = z * (PI / 180);
 
-  if(y == 180) { // reveresing gains
+  if(y >= 180) { // reveresing gains
     Kp[0] = 0.48;
     Ki[0] = 0.001;
   }
@@ -672,6 +673,7 @@ void driveXYZ(float x, float y, float z) { // Drives robot straight in x, y, and
   Kd[1] = 0;
 
   totalTime = 0;
+  accelerated = false;
 
   is_strafing = false;
   is_turning = false;
@@ -856,6 +858,9 @@ void PID_Controller() {
     if(totalTime < 0.5) {
       velocity[i] = (totalTime / 0.5) * velocity[i];
     }
+    else {
+      accelerated = true;
+    }
 
     lastError[i] = error[i];
   }
@@ -920,7 +925,7 @@ void IR_Sensors() {
   IR_mid_dist = mid_centre_offset + ((IR_MID_1_DIST + IR_MID_2_DIST) / 2);
   IR_mid_diff = IR_MID_1_DIST - IR_MID_2_DIST;
 
-  if (abs(IR_diff) > 0.3) {
+  if (abs(IR_diff) > 0.3 && (accelerated)) {
     correction = Kp_straight * IR_diff;
   }
   else {
