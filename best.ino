@@ -181,8 +181,8 @@ float Pterm[3], Iterm[3], Dterm[3];
 //float Kp_amplified[3] = {2,3,1.65};
 
 // PID VALUES FOR X AND Y NEED TO BE TUNED AND TESTED - TURNING SHOULD BE FINE
-float Kp[3] = {2.5, 2, 1.65};
-float Ki[3] = {0.1, 0.02, 0.05};
+float Kp[3] = {2.5, 2.2, 1.65};
+float Ki[3] = {0.1, 0.03, 0.05};
 float Kd[3] = {0, 0, 0};
 
 float Kp_straight = 45; // SHOULD BE TUNED
@@ -392,7 +392,7 @@ RUN_STATE reverse() { // COULD INCREASE Y CONTROLLER GAINS TO KEEP BETTER DISTAN
   //Kp[1] =  Kp_amplified[1];// Assigning the amplified y controller gain
   if (turned) {
     if (switch_back_count == 8) {
-      Kp_straight = 53;
+      Kp_straight = 55;
       max_velocity[1] = 20;
       driveXYZ(180, 15, 0);
     }
@@ -417,7 +417,7 @@ RUN_STATE reverse() { // COULD INCREASE Y CONTROLLER GAINS TO KEEP BETTER DISTAN
 RUN_STATE strafe() { // RESET Y CONTROLLER GAINS
   is_strafing = true;
   switch_back_count++;
-  Kp_gyro = 20;
+  Kp_gyro = 25;
   max_velocity[1] = 13;
 
   delay(150);
@@ -667,8 +667,8 @@ void driveXYZ(float x, float y, float z) { // Drives robot straight in x, y, and
   // reset gains
   Kp[0] = 2.7;
   Ki[0] = 0.1;
-  Kp[1] = 2;
-  Ki[1] = 0.02;
+  Kp[1] = 2.2;
+  Ki[1] = 0.03;
   Kd[1] = 0;
 
   totalTime = 0;
@@ -851,7 +851,8 @@ void PID_Controller() {
         velocity[i] = max_velocity[i];
       }
     }
-
+    
+    //accelerate
     if(totalTime < 0.5) {
       velocity[i] = (totalTime / 0.5) * velocity[i];
     }
