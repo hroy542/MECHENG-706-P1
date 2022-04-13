@@ -631,10 +631,10 @@ void align_back() { //uses mid range IRs to align to wall - COULD ALSO IMPLEMENT
     ir2_dist = IR_dist(BACK_RIGHT);
 
     if (ir1_dist > ir2_dist) {
-      ccw(69);
+      ccw(70);
     }
     else {
-      cw(69);
+      cw(70);
     }
   }
 
