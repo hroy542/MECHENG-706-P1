@@ -9,30 +9,18 @@
 // Bluetooth Serial Port
 #define OUTPUTBLUETOOTHMONITOR 1
 volatile int32_t Counter = 1;
+String Delimiter = ", ";
 
 SoftwareSerial BluetoothSerial(BLUETOOTH_RX, BLUETOOTH_TX);
-
-void bluetoothSerialOutputMonitor(int32_t Value1, int32_t Value2, int32_t Value3)
-{
-  String Delimiter = ", ";
-  
-  BluetoothSerial.print(Value1, DEC);
-  BluetoothSerial.print(Delimiter);
-  BluetoothSerial.print(Value2, DEC);
-  BluetoothSerial.print(Delimiter);
-  BluetoothSerial.println(Value3, DEC);
-}
 
 // Declare Pins
 const int LEFT_FRONT_LIR = A4; //sensor is attatched on pin A4
 const int LEFT_BACK_LIR = A5; //sensor is attatched on pin A5
 const int LEFT_BACK_MIR = A6; //sensor is attatched on pin A6
 const int RIGHT_BACK_MIR = A7; //sensor is attatched on pin A7
-  const int GYRO = A8; //Gyro is attatched on pin A8
+const int GYRO = A8; //Gyro is attatched on pin A8
 const int trigPin = 34;
 const int echoPin = 35;
-
-//byte serialRead = 0; //for control serial communication 
 
 // Declare Variables
 int ADC_sensor[6]; //ORDER GOES; [1]FRONT LIR, [2]BACK LIR, [3]LEFT MIR, [4]RIGHT MIR, [5]SONAR, [6]GYRO
@@ -46,6 +34,8 @@ const float mindist = 2.5;
 unsigned long current_time = 0;
 unsigned long previous_time = 0;
 bool timer_first_call = true;
+int wirelesscallibration = 1;
+int Mode = 1;
 
 ///*----GYRO Variables----
 float EMA_a = 0.4;
@@ -112,11 +102,16 @@ void setup() {
 
 void loop(){
   Serial.println("Please enter the mode you want to run: Battery Raw [2], Battery Percentage [3] or Enter the Sensor pin for the Sensor you want to tune [4 - 7]?:");
-  
-  while (Serial.available() ==0){
-  }
-  int Mode = Serial.parseInt();
 
+
+  
+  if (wirelesscallibration == 1){
+    Mode = 1;
+  } else {
+    while (Serial.available() ==0){
+    }
+    Mode = Serial.parseInt();
+  }
   switch (Mode){
     //USE MODE 1 FOR CALLIBRATION, PRINTS OUT THE RAW ADC INPUTS
     case 1:
@@ -137,7 +132,20 @@ void loop(){
         Serial.print("   |   ");
         Serial.print("RBM: ");
         Serial.println(ADC_sensor[3]);
-        delay(250);
+
+        //Bluetooth Serial Prints
+        BluetoothSerial.print("LFL: ");
+        BluetoothSerial.print(ADC_sensor[0]);
+        BluetoothSerial.print("   |   ");
+        BluetoothSerial.print("LBL: ");
+        BluetoothSerial.print(ADC_sensor[1]);
+        BluetoothSerial.print("   |   ");
+        BluetoothSerial.print("LBM: ");
+        BluetoothSerial.print(ADC_sensor[2]);
+        BluetoothSerial.print("   |   ");
+        BluetoothSerial.print("RBM: ");
+        BluetoothSerial.println(ADC_sensor[3]);
+        delay(200);
     }
     break;
 
@@ -147,8 +155,12 @@ void loop(){
       raw_lipo=analogRead(A0);
       Serial.println(raw_lipo);
       delay(400);
-        bluetoothSerialOutputMonitor(713, raw_lipo, 860);
-
+      
+//      BluetoothSerial.print(Value1, DEC);
+//      BluetoothSerial.print(Delimiter);
+//      BluetoothSerial.print(Value2, DEC);
+//      BluetoothSerial.print(Delimiter);
+//      BluetoothSerial.println(Value3, DEC);
     }
     break;
 
@@ -163,8 +175,11 @@ void loop(){
       Serial.print(Lipo_level_cal);
       Serial.println("%");
       delay(400);
-        bluetoothSerialOutputMonitor(0, Lipo_level_cal, 100);
-
+//      BluetoothSerial.print(Value1, DEC);
+//      BluetoothSerial.print(Delimiter);
+//      BluetoothSerial.print(Value2, DEC);
+//      BluetoothSerial.print(Delimiter);
+//      BluetoothSerial.println(Value3, DEC);
     }
     break;
 
@@ -175,7 +190,11 @@ void loop(){
         if (ADC_sensor[0] != 0){
           SensorSignalProcess(1, ADC_sensor[0]);
         }
-//        bluetoothSerialOutputMonitor(0, ADC_sensor[0], averaged[0]);
+//      BluetoothSerial.print(Value1, DEC);
+//      BluetoothSerial.print(Delimiter);
+//      BluetoothSerial.print(Value2, DEC);
+//      BluetoothSerial.print(Delimiter);
+//      BluetoothSerial.println(Value3, DEC);      
       }
     break;
 
@@ -186,8 +205,11 @@ void loop(){
         if (ADC_sensor[1] != 0){
           SensorSignalProcess(2, ADC_sensor[1]);
         }
-//        bluetoothSerialOutputMonitor(0, ADC_sensor[1], averaged[1]);
-
+//      BluetoothSerial.print(Value1, DEC);
+//      BluetoothSerial.print(Delimiter);
+//      BluetoothSerial.print(Value2, DEC);
+//      BluetoothSerial.print(Delimiter);
+//      BluetoothSerial.println(Value3, DEC);
       }
     break;
 
@@ -198,8 +220,11 @@ void loop(){
         if (ADC_sensor[2] != 0){
           SensorSignalProcess(3, ADC_sensor[2]);        
         }
-//        bluetoothSerialOutputMonitor(0, ADC_sensor[2], averaged[2]);
-
+//      BluetoothSerial.print(Value1, DEC);
+//      BluetoothSerial.print(Delimiter);
+//      BluetoothSerial.print(Value2, DEC);
+//      BluetoothSerial.print(Delimiter);
+//      BluetoothSerial.println(Value3, DEC);
       }
     break;
 
@@ -210,8 +235,11 @@ void loop(){
         if(ADC_sensor[3] != 0){
           SensorSignalProcess(4, ADC_sensor[3]);        
         }
-//        bluetoothSerialOutputMonitor(0, ADC_sensor[3], averaged[3]);
-
+//      BluetoothSerial.print(Value1, DEC);
+//      BluetoothSerial.print(Delimiter);
+//      BluetoothSerial.print(Value2, DEC);
+//      BluetoothSerial.print(Delimiter);
+//      BluetoothSerial.println(Value3, DEC);
       }
     break;
 
@@ -222,10 +250,10 @@ void loop(){
         SensorSignalProcess(1, ADC_sensor[0]);
         ADC_sensor[1] = analogRead(LEFT_BACK_LIR); // the read out is a signal from 0-1023 corresponding to 0-5v
         SensorSignalProcess(2, ADC_sensor[1]);
-
-        Serial.print(averaged[0]);
-        Serial.print(", ");
-        Serial.println(averaged[1]);
+//        Comment out the serial prints in the SensorSignalProcess function
+//        Serial.print(averaged[0]);
+//        Serial.print(", ");
+//        Serial.println(averaged[1]);
         
       }
     break;
@@ -242,8 +270,11 @@ void loop(){
     while(1){
       callibrated_sensor[5] = getGyroAngle();
     }
-        bluetoothSerialOutputMonitor(0, callibrated_sensor[5],0);
-
+//      BluetoothSerial.print(Value1, DEC);
+//      BluetoothSerial.print(Delimiter);
+//      BluetoothSerial.print(Value2, DEC);
+//      BluetoothSerial.print(Delimiter);
+//      BluetoothSerial.println(Value3, DEC);
     break;
 
     //USE MODE 11 TO PRINT FILTERED ULTRASONIC VALUES
@@ -257,8 +288,11 @@ void loop(){
 
         timer_first_call = false;
       }
-      bluetoothSerialOutputMonitor(0, callibrated_sensor[4], averaged[4]);
-
+//      BluetoothSerial.print(Value1, DEC);
+//      BluetoothSerial.print(Delimiter);
+//      BluetoothSerial.print(Value2, DEC);
+//      BluetoothSerial.print(Delimiter);
+//      BluetoothSerial.println(Value3, DEC);
     } 
     break;
   }
