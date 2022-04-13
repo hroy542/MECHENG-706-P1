@@ -392,9 +392,9 @@ RUN_STATE reverse() { // COULD INCREASE Y CONTROLLER GAINS TO KEEP BETTER DISTAN
   //Kp[1] =  Kp_amplified[1];// Assigning the amplified y controller gain
   if (turned) {
     if (switch_back_count == 8) {
-      Kp_straight = 50;
+      Kp_straight = 53;
       max_velocity[1] = 20;
-      driveXYZ(180, 16, 0);
+      driveXYZ(180, 15, 0);
     }
     else {
       driveXYZ(180, 0, 0);
@@ -418,7 +418,7 @@ RUN_STATE strafe() { // RESET Y CONTROLLER GAINS
   is_strafing = true;
   switch_back_count++;
   Kp_gyro = 20;
-  max_velocity[1] = 14;
+  max_velocity[1] = 13;
 
   delay(150);
 
