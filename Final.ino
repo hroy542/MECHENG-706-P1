@@ -98,7 +98,7 @@ float sensor_noise = 6;    // Change the value of sensor noise to get different 
 //----IR Kalman Filter----
 
 //----MA Filter----
-#define WINDOW_SIZE 13
+#define WINDOW_SIZE 20
 int index[6] = {0,0,0,0,0,0};//ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
 float value[6] = {0,0,0,0,0,0};//ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
 float SUM[6] = {0,0,0,0,0,0};//ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
@@ -173,18 +173,18 @@ float rateError[3] = {0,0,0};
 
 float Pterm[3], Iterm[3], Dterm[3];
 
+
+// PID VALUES WHEN WE WANT HIGHER CONTROL EFFORT FROM THE Y CONTROLLER RELATIVE TO THE X CONTROLLER
+float Kp_original[3] = {2,1.8,1.65};
+float Kp_amplified[3] = {2,3.6,1.65};
+
 // PID VALUES FOR X AND Y NEED TO BE TUNED AND TESTED - TURNING SHOULD BE FINE
 float Kp[3] = {2,1.8,1.65};
-float Ki[3] = {0.05,0.015,0.05};
+float Ki[3] = {0.06,0.015,0.05};
 float Kd[3] = {0,0,0};
 
 float Kp_straight = 40; // SHOULD BE TUNED
-float Kp_turn = 500;
-float Kp_align = 60; // gain for aligning to wall
-float Ki_align = 0.1;
-
-//const int pid_sample_time = 40; // 40ms sampling period - 20Hz
-//bool pid_first_call = true;
+float Kp_turn = 1500;
 //----PIDValues----
 
 //----Localisation----
@@ -236,7 +236,7 @@ void loop(void) //main loop
 STATE initialising() {
   //initialising
   SerialCom->println("INITIALISING....");
-  delay(1000); //One second delay to see the serial string "INITIALISING...."
+  //delay(1000); //One second delay to see the serial string "INITIALISING...."
   SerialCom->println("Enabling Motors...");
   enable_motors();
   SerialCom->println("RUNNING STATE...");
@@ -326,25 +326,13 @@ RUN_STATE find_corner() { // Drives robot to TL or BR corner
   8. Strafe left into starting position (15cm from wall) ensuring alignment using all IRs
   */
   
-  orient(); // initial orient of robot parallel to wall
-  delay(500);
+  find_min_align(); // initial orient of robot parallel to wall
+  delay(100);
   
-  float wall_dist;
-  int prevTime = millis();
-  
-  while(millis() - prevTime < 50) {
-    wall_dist = long_centre_offset + (0.63 * IR_dist(LEFT_FRONT)) + (0.37 * IR_dist(LEFT_BACK));
-  }
-
   switch_back_count = 1; // make it so uses the gyro to keep straight
-  
-  driveXYZ(20, wall_dist, 0);
-
-  delay(500);
-
   find_side(); // determines if on long or short side
 
-  delay(500);
+  delay(100);
 
   if(LONG) {
     corner_long();
@@ -355,39 +343,42 @@ RUN_STATE find_corner() { // Drives robot to TL or BR corner
     SHORT = false;
   }
 
-  switch_back_count = 0;
+  switch_back_count = 0; // reset variables;
   corner_finished = true;
+
+  delay(5000);
+  
   return FORWARD;
 }
 
-RUN_STATE forward() {
+RUN_STATE forward() { // COULD INCREASE Y CONTROLLER GAINS TO KEEP BETTER DISTANCE FROM WALL
   forward_flag = true;
-  
   align_back(); // align mid range IRs to back wall before starting 
   currentAngle = 0;
 
-  //Serial.println("Got ot here");
-  
-  delay(200);
-
+  delay(100);
+  Kp[1] =  Kp_amplified[1];// Assigning the amplified y controller gain
   if(turned) {
-    driveXYZ(20, 45 - ((switch_back_count - 5) * 10), 0); 
+    driveXYZ(15, 45 - ((switch_back_count - 5) * 10), 0); 
   }
   else {
-    driveXYZ(20, 15 + (switch_back_count * 10), 0); 
+    driveXYZ(15, 15 + (switch_back_count * 10), 0); 
   }
 
   if(switch_back_count == 4) {
+    Kp[1] = Kp_original[1];//Reassigning the original y controller gain
     return TURN;
   }
   else {
+    Kp[1] = Kp_original[1];//Reassigning the original y controller gain
     return STRAFE;
   }
 }
 
-RUN_STATE reverse() {
+RUN_STATE reverse() { // COULD INCREASE Y CONTROLLER GAINS TO KEEP BETTER DISTANCE FROM WALL 
   forward_flag = false;
 
+  Kp[1] =  Kp_amplified[1];// Assigning the amplified y controller gain
   if(turned) {
     driveXYZ(180, 45 - ((switch_back_count - 5) * 10), 0);
   }
@@ -396,19 +387,21 @@ RUN_STATE reverse() {
   }
 
   if(switch_back_count == 8) {
+    Kp[1] = Kp_original[1];//Reassigning the original y controller gain
     return END;
   }
   else {
+    Kp[1] = Kp_original[1];//Reassigning the original y controller gain
     return STRAFE;
   }
 }
 
-RUN_STATE strafe() {
+RUN_STATE strafe() { // RESET Y CONTROLLER GAINS 
   switch_back_count++;
 
   if(turned) {
     if(forward_flag) {
-      driveXYZ(20, 45 - ((switch_back_count - 5) * 10), 0);
+      driveXYZ(15, 45 - ((switch_back_count - 5) * 10), 0);
       return REVERSE;
     } 
     else {
@@ -418,7 +411,7 @@ RUN_STATE strafe() {
   }
   else {
     if(forward_flag) {
-      driveXYZ(20, 15 + (switch_back_count * 10), 0);
+      driveXYZ(15, 15 + (switch_back_count * 10), 0);
       return REVERSE;
     } 
     else {
@@ -432,7 +425,6 @@ RUN_STATE turn() {
   switch_back_count++;
   turned = true;
   
-  //rotate(90);
   driveXYZ(0, 0, 90);
   delay(100);
   
@@ -440,7 +432,7 @@ RUN_STATE turn() {
   delay(100);
 
   is_driving_middle = true;
-  driveXYZ(45, 20, 0);
+  driveXYZ(45, 15, 0);
   is_driving_middle = false;
   delay(100);
   
@@ -448,7 +440,6 @@ RUN_STATE turn() {
   delay(100);
   
   driveXYZ(0, 0, 90);
-  //rotate(90); 
 
   return FORWARD;
 }
@@ -458,57 +449,72 @@ RUN_STATE complete() {
   disable_motors();
 }
 
-void orient() { // initial orienting of robot parallel to wall using IR
-  float ir1_dist, ir2_dist, ratio, ultradist;
-  int prevTime = millis();
-  int ultratime = 0;
+void rotate_small(float angle) { // OLD ROTATE FUNCTION - DOESNT USE KINEMATICS
+  float power;
+
+  angle = angle * (PI / 180);
   
-  // while robot is not parallel to wall
-  while(!parallel) {
-    
-    // allow IRs to reach steady state
-    while(millis() - prevTime < 50) {
-      ir1_dist = IR_dist(LEFT_FRONT);
-      ir2_dist = IR_dist(LEFT_BACK);
+  currentAngle = 0;
+  
+  do {
+    gyro();
+    power = (angle - radiansAngle) * Kp_turn;
+
+    // constrain
+    if(power > 130) {
+      power = 130;
+    }
+    else if(power < -130) {
+      power = -130;
     }
 
-    // update IRs
-    ir1_dist = IR_dist(LEFT_FRONT);
-    ir2_dist = IR_dist(LEFT_BACK);
-
-    ccw(90); // rotate CCW
-    
-    // if both IRs are within 60cm
-    if(ir1_dist < 60 && ir2_dist < 60) {
-      
-      // calculate ratio between IR distances
-      if(ir1_dist < ir2_dist) {
-        ratio = ir1_dist / ir2_dist;
-      }
-      else {
-        ratio = ir2_dist / ir1_dist;
-      }
-      
-      // if ratio is ~1 (i.e. nearly parallel) stop
-      if(ratio >= 0.95) {
-        stop();
-        delay(100);
-        Ultrasound();
-        if(Ultradistance > 80) {
-          parallel = false;
-        }
-        else {
-          parallel = true;
-          align();
-        }
-      }
-    }
-  }
-
+    // send power
+    left_front_motor.writeMicroseconds(1500 + power);
+    left_rear_motor.writeMicroseconds(1500 + power);
+    right_rear_motor.writeMicroseconds(1500 + power);
+    right_front_motor.writeMicroseconds(1500 + power);
+  } while(abs(radiansAngle) < abs(angle)); // exit condition
+  
   return;
 }
 
+void find_min_align() {
+  int count = 0;
+  int index = 0;
+  float min_dist = 999;
+
+  rotationThreshold = 0;
+
+  while(count < 11) {
+    rotate_small(8);
+
+    delay(10);
+    
+    Ultrasound();
+
+    if(Ultradistance < min_dist) {
+      min_dist = Ultradistance;
+      index = count;
+    }
+
+    count++;
+  }
+
+  while((index) < (count - 1)) {
+    rotate_small(-8);
+    index++;
+  }
+
+  rotationThreshold = 1;
+  return;
+}
+
+
 void find_side() { // determine whether on short or long side of rectangle
+
+  driveXYZ(20,0,0);
+
+  delay(100);
   
   driveXYZ(0,0,180); // rotate robot to see other wall
 
@@ -516,18 +522,18 @@ void find_side() { // determine whether on short or long side of rectangle
 
   align_back();
 
-  delay(200);
+  delay(100);
   Ultrasound();
   //BluetoothSerial.println(Ultradistance);
   
-  delay(200);
+  delay(100);
 
-  // if ultrasonic detects > 160 cm - robot on short side
+  // if ultrasonic detects > 150 cm - robot on short side
   if(Ultradistance > 150) {
     LONG = false;
     SHORT = true;
   }
-  // if ultrasonic detects < 130 cm - robot on long side
+  // if ultrasonic detects < 120 cm - robot on long side
   else if(Ultradistance < 120) {
     SHORT = false;
     LONG = true;
@@ -544,13 +550,7 @@ void corner_long() { // drives robot to corner if on long side
   align(); // might not need
   delay(100);
 
-  Ultrasound();
-  delay(100);
-
   driveXYZ(180, 15, 0); // reverse until 15cm from wall (starting position)
-  delay(100);
-  
-  driveXYZ(Ultradistance, 15, 0); // strafe left until 15cm from wall
   delay(100);
 
   align(); // NOTE COULD REPLACE ALIGN_BACK() WITH ALIGN() - DEPENDS WHATS MORE RELIABLE
@@ -572,7 +572,7 @@ void corner_short() { // drives robot to corner if on short side
   
 void align() { // uses long range IRs to align robot to wall
   float ir1_dist, ir2_dist;
-  float alignment_threshold = 0.15; // IRs within 0.2cm of one another - SHOULD BE TWEAKED
+  float alignment_threshold = 0.2; // IRs within 0.2cm of one another - SHOULD BE TWEAKED
   int prevTime = millis();
 
   while(millis() - prevTime < 50) {
@@ -598,7 +598,7 @@ void align() { // uses long range IRs to align robot to wall
 
 void align_back() { //uses mid range IRs to align to wall - COULD ALSO IMPLEMENT BETTER CONTROL (P CONTROL)
   float ir1_dist, ir2_dist;
-  float alignment_threshold = 0.02;
+  float alignment_threshold = 0.03;
   int prevTime = millis();
 
   while(millis() - prevTime < 50) {
@@ -621,47 +621,6 @@ void align_back() { //uses mid range IRs to align to wall - COULD ALSO IMPLEMENT
   stop(); // stop motors
   return;
 }
-
-//void align_controller() { // uses mid range IRs to align with wall.
-//  float ir1_dist, ir2_dist, error, power, Iterm;
-//  float alignment_threshold = 0.02;
-//  int prevTime = millis();
-//
-//  // update IR distances until aligned
-//  do {
-//
-//    while(millis() - prevTime < 50) {
-//      ir1_dist = IR_dist(LEFT_FRONT);
-//      ir2_dist = IR_dist(LEFT_BACK);
-//    }
-//
-//    ir1_dist = IR_dist(LEFT_FRONT);
-//    ir2_dist = IR_dist(LEFT_BACK);
-//    
-//    error = ir1_dist - ir2_dist;
-//    Iterm += error * Ki_align;
-//    power = (Kp_align * error) + Iterm;
-//
-//    if(power > 80) {
-//      power = 80;
-//    }
-//    else if(power < -80) {
-//      power = -80;
-//    }
-//    
-//    // send power
-//    left_front_motor.writeMicroseconds(1500 - power);
-//    left_rear_motor.writeMicroseconds(1500 - power);
-//    right_front_motor.writeMicroseconds(1500 - power);
-//    right_rear_motor.writeMicroseconds(1500 - power);
-//
-//    delay(20);
-//       
-//  } while(1);//abs(error) >= alignment_threshold);
-//
-//  stop(); // stop motors
-//  return;
-//}
 
 void driveXYZ(float x, float y, float z) { // Drives robot straight in x, y, and z // turning only occurs by itself i.e. no x and y
   DRIVING = true;
@@ -723,7 +682,9 @@ void Controller(){
       currentPos[0] = Ultradistance;
       currentPos[1] = 120 - IR_wall_dist;
     }
-    else if(is_turning){ }// is turning 
+    else if(is_turning){ 
+      //do_nothing
+    } 
     else if(is_driving_middle) {
       currentPos[0] = 200 - IR_wall_dist;
       currentPos[1] = 120 - Ultradistance;
@@ -744,10 +705,10 @@ void Controller(){
   else if(reference[0] == 180) {
     // change gains for reversing
     Kp[0] = 1;
-    Ki[0] = 0.005;
+    Ki[0] = 0.001;
     
-    if(IR_mid_dist < 37) {
-      error[0] = IR_mid_dist - 15.0;
+    if(IR_mid_dist < 35) {
+      error[0] = IR_mid_dist - 20.0;
     }
     else {
       error[0] = reference[0] - Ultradistance;
@@ -758,7 +719,6 @@ void Controller(){
   }
 
   if(reference[1] == 0){
-    //Serial.println("HereTest");
     error[1] = 0;
   }
   else{
@@ -783,7 +743,7 @@ void Controller(){
   set_motors();
 
   // exit loop
-  if((abs(error[0]) + abs(error[1])) <= 2.75 && (reference[2] == 0)) { // XY exit condition - SHOULD BE TWEAKED
+  if((abs(error[0]) + abs(error[1])) <= 2.75 && (reference[2] == 0)) { // XY exit condition - COULD BE TWEAKED ALONGSIDE GAINS
     DRIVING = false;
     return;
   }
@@ -793,7 +753,7 @@ void Controller(){
     return;
   }
   
-  delay(9);
+  delay(8);
 }
 
 void PID_Controller(){
@@ -867,7 +827,7 @@ void inverse_kinematics(){
 
 void set_motor_speed(){
   for (int i = 0; i < 4; i++){
-    motor_speed_Value[i] = ang_vel[i] * 28; // scale angular velocity to motor speed value - COULD BE TUNED BETTER
+    motor_speed_Value[i] = ang_vel[i] * 30; // scale angular velocity to motor speed value - COULD BE TUNED BETTER
   }
 }
 
@@ -930,7 +890,7 @@ void gyro() { // could be tuned better
 
   timeElapsed = gyroTime - prev_gyroTime;
   
-  gyroRate = ((analogRead(gyroPin) - 505.0) * gyroSupplyVoltage) / 1024.0; 
+  gyroRate = ((analogRead(gyroPin) - gyroMiddle) * gyroSupplyVoltage) / 1024.0; 
   angularVelocity = gyroRate / gyroSensitivity; // angular velocity in degrees/second
 
   if(angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold) {
@@ -952,23 +912,28 @@ float IR_dist(IR code) { // find distances using calibration curve equations
   switch(code) {
     case LEFT_FRONT:
       adc = analogRead(IR_LONG_1);
-      dist = (15000)/(pow(adc,1.178));
-      est = Kalman(dist, last_est[0], last_var[0], LEFT_FRONT);
-      
-      //MA FILTER
-      SUM[0] -= FRONT_LIR[index[0]];
-      FRONT_LIR[index[0]] = est;
-      SUM[0] += est;
-      index[0] = (index[0] + 1) % WINDOW_SIZE;
-      averaged[0] = SUM[0]/WINDOW_SIZE;
-      est = averaged[0];
-      last_est[0] = averaged[0];
-      //MA FILTER
-      
+      if(adc != 0 && adc <= 650){
+        dist = (13391)/(pow(adc,1.172));
+        est = Kalman(dist, last_est[0], last_var[0], LEFT_FRONT);
+        
+        //MA FILTER
+        SUM[0] -= FRONT_LIR[index[0]];
+        FRONT_LIR[index[0]] = est;
+        SUM[0] += est;
+        index[0] = (index[0] + 1) % WINDOW_SIZE;
+        averaged[0] = SUM[0]/WINDOW_SIZE;
+        est = averaged[0];
+        last_est[0] = averaged[0];
+        //MA FILTER
+      } else {
+        est = last_est[0];
+      }
       break;
     case LEFT_BACK:
       adc = analogRead(IR_LONG_2);
-      dist = (15000)/(pow(adc,1.172));
+      if(adc != 0 && adc <= 650){
+
+      dist = (11178)/(pow(adc,1.14));
       est = Kalman(dist, last_est[1], last_var[1], LEFT_BACK);
       
       //MA FILTER
@@ -980,10 +945,13 @@ float IR_dist(IR code) { // find distances using calibration curve equations
       est = averaged[1];
       last_est[1] = averaged[1];
       //MA FILTER
-
+      } else {
+        est = last_est[1];
+      }
       break;
     case BACK_LEFT:
       adc = analogRead(IR_MID_1);
+      if(adc != 0 && adc <= 650){
       dist = (3730.6)/(pow(adc,1.082));
       est = Kalman(dist, last_est[2], last_var[2], BACK_LEFT);
 
@@ -996,10 +964,13 @@ float IR_dist(IR code) { // find distances using calibration curve equations
       est = averaged[2];
       last_est[2] = averaged[2];
       //MA FILTER
-      
+      } else {
+        est = last_est[2];
+      }
       break;
     case BACK_RIGHT:
       adc = analogRead(IR_MID_2);
+      if(adc != 0 && adc <= 650){
       dist = (3491.3)/(pow(adc,1.069));
       est = Kalman(dist, last_est[3], last_var[3], BACK_RIGHT);
 
@@ -1012,7 +983,9 @@ float IR_dist(IR code) { // find distances using calibration curve equations
       est = averaged[3];
       last_est[3] = averaged[3];
       //MA FILTER
-      
+      } else {
+        est = last_est[3];
+      }
       break;
   }
   
@@ -1044,61 +1017,5 @@ float Kalman(float rawdata, float prev_est, float last_variance, IR code) {
   }
 
   return a_post_est;
-}
-//----WRITTEN HELPER FUNCTIONS----
-
-//---------------Functions for Bluetooth Comms-----------------------------------
-void serialOutputMonitor(int32_t Value1, int32_t Value2, int32_t Value3)
-{
-  String Delimiter = ", ";
-  //add localisation output here:
-//  BluetoothSerial.print(Value1, DEC);
-//  BluetoothSerial.print(Delimiter);
-//  BluetoothSerial.print(Value2, DEC);
-//  BluetoothSerial.print(Delimiter);
-//  BluetoothSerial.println(Value3, DEC);
-}
-
-void serialOutputPlotter(int32_t Value1, int32_t Value2, int32_t Value3)
-{
-  String Delimiter = ", ";
-  //add localisation output here:
-//  BluetoothSerial.print(Value1, DEC);
-//  BluetoothSerial.print(Delimiter);
-//  BluetoothSerial.print(Value2, DEC);
-//  BluetoothSerial.print(Delimiter);
-//  BluetoothSerial.println(Value3, DEC);
-}
-
-void bluetoothSerialOutputMonitor(int32_t Value1, int32_t Value2, int32_t Value3)
-{
-  String Delimiter = ", ";
-  //add localisation output here:
-//  BluetoothSerial.print(Value1, DEC);
-//  BluetoothSerial.print(Delimiter);
-//  BluetoothSerial.print(Value2, DEC);
-//  BluetoothSerial.print(Delimiter);
-//  BluetoothSerial.println(Value3, DEC);
-}
-
-void serialOutput(int32_t Value1, int32_t Value2, int32_t Value3)
-{
-  if (OUTPUTMONITOR)
-  {
-    //add localisation output here:
-    //serialOutputMonitor(Value1, Value2, Value3);
-  }
-
-  if (OUTPUTPLOTTER)
-  {
-    //add localisation output here:
-    //serialOutputMonitor(Value1, Value2, Value3);
-  }
-
-  if (OUTPUTBLUETOOTHMONITOR)
-  {
-    //add localisation output here:
-    //serialOutputMonitor(Value1, Value2, Value3);
-  }
 }
 //----WRITTEN HELPER FUNCTIONS----
