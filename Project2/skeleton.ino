@@ -10,16 +10,17 @@ enum STATE {
 
 //State machine states when RUNNING
 enum RUN_STATE {
+  ALIGN,
   FIND_FIRE,
   EXTINGUISH,
   END,
 };
 
-//----RUNNING VARIABLES----
-int switch_back_count = 0;
-bool forward_flag = false;
-bool turned = false; // after turn in middle -> true
-//----RUNNING VARIABLES----
+enum AVOID_STATE {
+  FORWARD,
+  STRAFE_LEFT,
+  STRAFE_RIGHT,
+};
 
 //Refer to Shield Pinouts.jpg for pin locations
 
@@ -28,6 +29,7 @@ const byte left_front = 46;
 const byte left_rear = 47;
 const byte right_rear = 50;
 const byte right_front = 51;
+const byte turret = 52;
 
 //----Bluetooth Comms----
 #define BLUETOOTH_RX 10
@@ -53,10 +55,10 @@ const float ultra_centre_offset = 11.0;
 
 //----IR----
 enum IR {
-  LEFT_FRONT,
-  LEFT_BACK,
-  BACK_LEFT,
-  BACK_RIGHT,
+  FRONT_LEFT, // mid
+  FRONT_RIGHT, // mid
+  LEFT_FRONT, // long
+  LEFT_BACK, // long
 };
 
 // Left front long range IR
@@ -102,20 +104,28 @@ enum PT {
   PT4, // right most
 };
 
-const int PT1_pin = 0;
-const int PT2_pin = 0;
-const int PT3_pin = 0;
-const int PT4_pin = 0;
+const int PT1_pin = A9;
+const int PT2_pin = A10;
+const int PT3_pin = A11;
+const int PT4_pin = A12;
 
 int PT1_reading = 0;
 int PT2_reading = 0;
 int PT3_reading = 0;
 int PT4_reading = 0;
+int PT_sum = 0;
+
+const int detection_threshold = 100; // SUBJECT TO CHANGE
 //----Phototransistor----
 
-//----Fan-----
+//----Fire Fighting----
+const int mosfetPin = 45; // mosfet pin for fan
 
-//----Fan-----
+int numFires = 0;
+bool fireDetected = false;
+bool fanAligned = false;
+bool fireInRange = false;
+//----Fire Fighting----
 
 //----MA Filter----
 #define WINDOW_SIZE 13
@@ -127,9 +137,7 @@ float FRONT_LIR[WINDOW_SIZE];
 float BACK_LIR[WINDOW_SIZE];
 float LEFT_MIR[WINDOW_SIZE];
 float RIGHT_MIR[WINDOW_SIZE];
-
 float SONAR[6];
-
 float LEFT_PT_1[WINDOW_SIZE];
 float LEFT_PT_2[WINDOW_SIZE];
 float RIGHT_PT_1[WINDOW_SIZE];
@@ -154,7 +162,7 @@ float gyroRate = 0;                      // read out value of sensor in voltage
 float angleChange = 0;
 float currentAngle = 0;               // current angle calculated by angular velocity integral on
 float gyroCorrection = 0;
-float Kp_gyro = 30;
+float Kp_gyro = 35;
 
 float radiansAngle = 0;
 //----Gyro----
@@ -168,10 +176,6 @@ bool is_strafing = false;
 bool accelerated = false;
 //----Driving----
 
-//----Fire Fighting----
-int numFires = 0;
-//----Fire Fighting----
-
 // Anything over 400 cm (23200 us pulse) is "out of range". Hit:If you decrease to this the ranging sensor but the timeout is short, you may not need to read up to 4meters.
 const unsigned int MAX_DIST = 23200;
 
@@ -179,6 +183,7 @@ Servo left_front_motor;  // create servo object to control Vex Motor Controller 
 Servo left_rear_motor;  // create servo object to control Vex Motor Controller 29
 Servo right_rear_motor;  // create servo object to control Vex Motor Controller 29
 Servo right_front_motor;  // create servo object to control Vex Motor Controller 29
+Servo turret_motor;
 
 //----InverseKinematicValues----
 float L = 007.620;
@@ -186,7 +191,7 @@ float l = 009.078;
 float R_w = 002.54;
 
 float velocity[3] = {0, 0, 0};
-float max_velocity[3] = {30, 20, 1.5}; // cm/s
+float max_velocity[3] = {20, 15, 1.5}; // cm/s
 float ang_vel[4] = {0, 0, 0, 0};
 
 float motor_speed_Value[4] = {0, 0, 0, 0};
@@ -202,18 +207,10 @@ float rateError[3] = {0, 0, 0};
 
 float Pterm[3], Iterm[3], Dterm[3];
 
-
-// PID VALUES WHEN WE WANT HIGHER CONTROL EFFORT FROM THE Y CONTROLLER RELATIVE TO THE X CONTROLLER
-//float Kp_original[3] = {2,1.8,1.65};
-//float Kp_amplified[3] = {2,3,1.65};
-
-// PID VALUES FOR X AND Y NEED TO BE TUNED AND TESTED - TURNING SHOULD BE FINE
+// PID VALUES FOR X, Y AND Z
 float Kp[3] = {2.5, 2.2, 1.65};
 float Ki[3] = {0.1, 0.03, 0.05};
 float Kd[3] = {0, 0, 0};
-
-float Kp_straight = 45; // SHOULD BE TUNED
-float Kp_turn = 1500;
 //----PIDValues----
 
 //Serial Pointer
@@ -226,6 +223,8 @@ void setup(void)
   pinMode(trigPin, OUTPUT);
   digitalWrite(trigPin, LOW);
   pinMode(echoPin, INPUT); // Sets the echoPin as an Input
+
+  pinMode(mosfetPin, OUTPUT);
 
   // Setup the Serial port and pointer, the pointer allows switching the debug info through the USB port(Serial) or Bluetooth port(Serial1) with ease.
   SerialCom = &Serial;
@@ -261,10 +260,13 @@ STATE initialising() {
 
 STATE running() {
 
-  static RUN_STATE running_state = FIND_FIRE;
+  static RUN_STATE running_state = ALIGN;
 
   //FSM
   switch (running_state) {
+    case ALIGN:
+      running_state = align();
+      break;
     case FIND_FIRE:
       running_state = find_fire();
       break;
@@ -274,7 +276,6 @@ STATE running() {
     case END:
       running_state = complete();
       break;
-      //----DRIVING COMPONENT----
   };
 
   return RUNNING;
@@ -296,11 +297,13 @@ void disable_motors()
   left_rear_motor.detach();  // detach the servo on pin left_rear to turn Vex Motor Controller 29 Off
   right_rear_motor.detach();  // detach the servo on pin right_rear to turn Vex Motor Controller 29 Off
   right_front_motor.detach();  // detach the servo on pin right_front to turn Vex Motor Controller 29 Off
+  turret_motor.detach();
 
   pinMode(left_front, INPUT);
   pinMode(left_rear, INPUT);
   pinMode(right_rear, INPUT);
   pinMode(right_front, INPUT);
+  pinMode(turret, INPUT);
 }
 
 void enable_motors()
@@ -309,13 +312,45 @@ void enable_motors()
   left_rear_motor.attach(left_rear);  // attaches the servo on pin left_rear to turn Vex Motor Controller 29 On
   right_rear_motor.attach(right_rear);  // attaches the servo on pin right_rear to turn Vex Motor Controller 29 On
   right_front_motor.attach(right_front);  // attaches the servo on pin right_front to turn Vex Motor Controller 29 On
+  turret_motor.attach(turret);
+}
+
+RUN_STATE align() { // initial alignment of robot to be parallel to walls - drives forward until wall reached, uses front IRs to align then rotates 180 degrees
+  static AVOID_STATE avoiding_state = FORWARD;
+  
+  //FSM
+  switch (avoiding_state) {
+    case FORWARD:
+      avoiding_state = forward();
+      break;
+    case STRAFE_LEFT:
+      avoiding_state = strafe_left();
+      break;
+    case STRAFE_RIGHT:
+      avoiding_state = strafe_right();
+      break;
+  };
 }
 
 RUN_STATE find_fire() {
-  sweep();
-  if(isFireDetected()) {
+  static AVOID_STATE avoiding_state = FORWARD;
+
+  if(fireDetected) {
     
   }
+  
+  //FSM
+  switch (avoiding_state) {
+    case FORWARD:
+      avoiding_state = forward();
+      break;
+    case STRAFE_LEFT:
+      avoiding_state = strafe_left();
+      break;
+    case STRAFE_RIGHT:
+      avoiding_state = strafe_right();
+      break;
+  };
 
   return EXTINGUISH;
 }
@@ -336,33 +371,25 @@ RUN_STATE complete() {
   disable_motors();
 }
 
-void rotate_small(float angle) { // OLD ROTATE FUNCTION - DOESNT USE KINEMATICS
-  float power;
+AVOID_STATE forward() {
+  Ultrasound();
+  IR_Sensors();
 
-  angle = angle * (PI / 180);
 
-  currentAngle = 0;
+  if(Ultradistance < 20) {
+    
+  }
+  else {
+    return FORWARD; // keep going forward
+  }
+}
 
-  do {
-    gyro();
-    power = (angle - radiansAngle) * Kp_turn;
+AVOID_STATE strafe_left() {
+  IR_Sensors();
+}
 
-    // constrain
-    if (power > 130) {
-      power = 130;
-    }
-    else if (power < -130) {
-      power = -130;
-    }
-
-    // send power
-    left_front_motor.writeMicroseconds(1500 + power);
-    left_rear_motor.writeMicroseconds(1500 + power);
-    right_rear_motor.writeMicroseconds(1500 + power);
-    right_front_motor.writeMicroseconds(1500 + power);
-  } while (abs(radiansAngle) < abs(angle)); // exit condition
-
-  return;
+AVOID_STATE strafe_right() {
+  IR_Sensors();
 }
 
 void driveXYZ(float x, float y, float z) { // Drives robot straight in x, y, and z // turning only occurs by itself i.e. no x and y
@@ -372,27 +399,9 @@ void driveXYZ(float x, float y, float z) { // Drives robot straight in x, y, and
   reference[1] = y;
   reference[2] = z * (PI / 180);
 
-  if(y >= 180) { // reveresing gains
-    Kp[0] = 0.48;
-    Ki[0] = 0.001;
-  }
-
-  if(is_strafing) {
-    Kp[1] = 2.2;
-    Ki[1] = 0.015;
-    Kd[1] = 0.1;
-  }
-
   while (DRIVING) {
     Controller(); // CONTROL LOOP
   }
-
-  // reset gains
-  Kp[0] = 2.7;
-  Ki[0] = 0.1;
-  Kp[1] = 2.2;
-  Ki[1] = 0.03;
-  Kd[1] = 0;
 
   totalTime = 0;
   accelerated = false;
@@ -404,11 +413,14 @@ void driveXYZ(float x, float y, float z) { // Drives robot straight in x, y, and
 }
 
 void sweep() {
+  phototransistors();
   
 }
 
-bool isFireDetected() {
-  
+void isFireDetected() {
+  if(PT_sum > detection_threshold) {
+    fireDetected = true;
+  }
 }
 
 //----OPEN LOOP DRIVING FUNCTIONS----
@@ -532,18 +544,6 @@ void PID_Controller() {
       }
     }
 
-    //    // OTHER ANTI-WINDUP - TUNE PID VALUES
-    //    if(abs(Iterm[i]) > max_velocity[i]) {
-    //
-    //      // constrains Iterm such that Pterm + Iterm <= maximum velocity
-    //      if(Iterm[i] < 0) {
-    //        Iterm[i] = (-1 * max_velocity[i]);
-    //      }
-    //      else {
-    //        Iterm[i] = max_velocity[i];
-    //      }
-    //    }
-
     velocity[i] = Pterm[i] + Iterm[i] + Dterm[i];
 
     // constrain to max velocity - just to ensure velocity <= maximum velocity
@@ -583,21 +583,10 @@ void set_motor_speed() {
 }
 
 void set_motors() {
-
-  if (switch_back_count == 0 || switch_back_count == 8) { // only use at the edges
-    // IR straight
-    left_front_motor.writeMicroseconds(1500 + motor_speed_Value[0] - correction);
-    left_rear_motor.writeMicroseconds(1500 + motor_speed_Value[1] - correction);
-    right_rear_motor.writeMicroseconds(1500 + motor_speed_Value[2] - correction);
-    right_front_motor.writeMicroseconds(1500 + motor_speed_Value[3] - correction);
-  }
-  else {
-    // gyro straight
-    left_front_motor.writeMicroseconds(1500 + motor_speed_Value[0] - gyroCorrection);
-    left_rear_motor.writeMicroseconds(1500 + motor_speed_Value[1] - gyroCorrection);
-    right_rear_motor.writeMicroseconds(1500 + motor_speed_Value[2] - gyroCorrection);
-    right_front_motor.writeMicroseconds(1500 + motor_speed_Value[3] - gyroCorrection);
-  }
+  left_front_motor.writeMicroseconds(1500 + motor_speed_Value[0] - gyroCorrection);
+  left_rear_motor.writeMicroseconds(1500 + motor_speed_Value[1] - gyroCorrection);
+  right_rear_motor.writeMicroseconds(1500 + motor_speed_Value[2] - gyroCorrection);
+  right_front_motor.writeMicroseconds(1500 + motor_speed_Value[3] - gyroCorrection);
 }
 
 void Ultrasound() {
@@ -612,26 +601,11 @@ void Ultrasound() {
 }
 
 void IR_Sensors() {
-
   // Get distances from left side of robot to wall
   IR_LONG_1_DIST = IR_dist(LEFT_FRONT);
   IR_LONG_2_DIST = IR_dist(LEFT_BACK);
-
-  IR_MID_1_DIST = IR_dist(BACK_LEFT);
-  IR_MID_2_DIST = IR_dist(BACK_RIGHT);
-
-  IR_wall_dist = long_centre_offset + (0.37 * IR_LONG_1_DIST + 0.63 * IR_LONG_2_DIST); // distance of centre of robot to wall
-  IR_diff = IR_LONG_1_DIST - IR_LONG_2_DIST; // Difference between long range IRs
-
-  IR_mid_dist = mid_centre_offset + ((IR_MID_1_DIST + IR_MID_2_DIST) / 2);
-  IR_mid_diff = IR_MID_1_DIST - IR_MID_2_DIST;
-
-  if (abs(IR_diff) > 0.2 && (accelerated)) {
-    correction = Kp_straight * IR_diff;
-  }
-  else {
-    correction = 0;
-  }
+  IR_MID_1_DIST = IR_dist(FRONT_LEFT);
+  IR_MID_2_DIST = IR_dist(FRONT_RIGHT);
 }
 
 void gyro() { // could be tuned better
@@ -697,11 +671,11 @@ float IR_dist(IR code) { // find distances using calibration curve equations
         est = last_est[1];
       }
       break;
-    case BACK_LEFT:
+    case FRONT_LEFT:
       adc = analogRead(IR_MID_1);
       if (adc != 0 && adc <= 650) {
         dist = (3730.6) / (pow(adc, 1.082));
-        est = Kalman(dist, last_est[2], last_var[2], BACK_LEFT);
+        est = Kalman(dist, last_est[2], last_var[2], FRONT_LEFT);
 
         //MA FILTER
         SUM[2] -= LEFT_MIR[index[2]];
@@ -716,11 +690,11 @@ float IR_dist(IR code) { // find distances using calibration curve equations
         est = last_est[2];
       }
       break;
-    case BACK_RIGHT:
+    case FRONT_RIGHT:
       adc = analogRead(IR_MID_2);
       if (adc != 0 && adc <= 650) {
         dist = (3491.3) / (pow(adc, 1.069));
-        est = Kalman(dist, last_est[3], last_var[3], BACK_RIGHT);
+        est = Kalman(dist, last_est[3], last_var[3], FRONT_RIGHT);
 
         //MA FILTER
         SUM[3] -= RIGHT_MIR[index[3]];
@@ -758,9 +732,9 @@ float Kalman(float rawdata, float prev_est, float last_variance, IR code) {
       last_var[0] = a_post_var;
     case LEFT_BACK:
       last_var[1] = a_post_var;
-    case BACK_LEFT:
+    case FRONT_LEFT:
       last_var[2] = a_post_var;
-    case BACK_RIGHT:
+    case FRONT_RIGHT:
       last_var[3] = a_post_var;
   }
 
@@ -768,11 +742,11 @@ float Kalman(float rawdata, float prev_est, float last_variance, IR code) {
 }
 
 void phototransistors() {
-  PT1_reading = analogRead(A9);
-  PT2_reading = analogRead(A9);
-  PT3_reading = analogRead(A9);
-  PT4_reading = analogRead(A9);
+  PT1_reading = analogRead(PT1_pin);
+  PT2_reading = analogRead(PT2_pin);
+  PT3_reading = analogRead(PT3_pin);
+  PT4_reading = analogRead(PT4_pin);
+
+  PT_sum = PT1_reading + PT2_reading + PT3_reading + PT4_reading;
 }
-
-
 //----WRITTEN HELPER FUNCTIONS----
