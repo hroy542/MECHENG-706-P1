@@ -10,16 +10,17 @@ enum STATE {
 
 //State machine states when RUNNING
 enum RUN_STATE {
-  ALIGN,
+  DETECT,
   FIND_FIRE,
-  EXTINGUISH,
   END,
 };
 
-enum AVOID_STATE {
-  FORWARD,
+enum FIRE_FIGHTING_STATE {
+  FORWARD_DEFAULT,
+  FORWARD_PASS,
   STRAFE_LEFT,
   STRAFE_RIGHT,
+  EXTINGUISH,
 };
 
 //Refer to Shield Pinouts.jpg for pin locations
@@ -57,8 +58,8 @@ const float ultra_centre_offset = 11.0;
 enum IR {
   FRONT_LEFT, // mid
   FRONT_RIGHT, // mid
-  LEFT_FRONT, // long
-  LEFT_BACK, // long
+  LEFT, // long
+  RIGHT, // long
 };
 
 // Left front long range IR
@@ -118,13 +119,18 @@ int PT_sum = 0;
 const int detection_threshold = 100; // SUBJECT TO CHANGE
 //----Phototransistor----
 
+//----Obstacle Avoidance----
+bool strafed_left = false;
+bool strafed_right = false;
+//----Obstacle Avoidance----
+
 //----Fire Fighting----
 const int mosfetPin = 45; // mosfet pin for fan
 
 int numFires = 0;
-bool fireDetected = false;
+bool fire_is_close = false;
 bool fanAligned = false;
-bool fireInRange = false;
+bool extinguished = false;
 //----Fire Fighting----
 
 //----MA Filter----
@@ -169,11 +175,9 @@ float radiansAngle = 0;
 
 //----Driving----
 bool DRIVING = false;
-bool corner_finished = false;
-bool is_turning = false;
-bool is_driving_middle = false;
-bool is_strafing = false;
 bool accelerated = false;
+const int forward_speed = 200;
+const int strafe_speed = 150;
 //----Driving----
 
 // Anything over 400 cm (23200 us pulse) is "out of range". Hit:If you decrease to this the ranging sensor but the timeout is short, you may not need to read up to 4meters.
@@ -260,18 +264,15 @@ STATE initialising() {
 
 STATE running() {
 
-  static RUN_STATE running_state = ALIGN;
+  static RUN_STATE running_state = DETECT;
 
   //FSM
   switch (running_state) {
-    case ALIGN:
-      running_state = align();
+    case DETECT:
+      running_state = detect();
       break;
     case FIND_FIRE:
       running_state = find_fire();
-      break;
-    case EXTINGUISH:
-      running_state = put_out_fire();
       break;
     case END:
       running_state = complete();
@@ -315,54 +316,75 @@ void enable_motors()
   turret_motor.attach(turret);
 }
 
-RUN_STATE align() { // initial alignment of robot to be parallel to walls - drives forward until wall reached, uses front IRs to align then rotates 180 degrees
-  static AVOID_STATE avoiding_state = FORWARD;
+RUN_STATE detect() { // initial detection and alignment towards fire from starting point - CURRENTLY 240 DEGREES OF COVERAGE
+  int servo_val = 900;
+  int servo_max = 0;
+  int max_sum = 0;  
+  int rotation_count = 1;
+  int max_rotation_count = 1;
+  int count = 0;
+
+  while(rotation_count <= 3) {
+    while(count < 10) { // full range rotation - CAN PERHAPS MODIFY FOR FULL 360 DEGREES
+      
+      if(rotation_count % 2 == 1) {
+        servo_val += (600 / 10); // 600 is range from centre, 10 is number of increments
+      }
+      else {
+        servo_val -= (600 / 10);
+      }
+      
+      turret_motor.writeMicroseconds(servo_val);
+      phototransistors();
   
-  //FSM
-  switch (avoiding_state) {
-    case FORWARD:
-      avoiding_state = forward();
-      break;
-    case STRAFE_LEFT:
-      avoiding_state = strafe_left();
-      break;
-    case STRAFE_RIGHT:
-      avoiding_state = strafe_right();
-      break;
-  };
+      if(PT_sum > max_sum) {
+        servo_max = servo_val;
+        max_sum = PT_sum;
+        max_rotation_count = rotation_count;
+      }
+
+      count++;
+      delay(10);
+    }
+    rotate(120);
+    count = 0;
+    rotation_count++;
+  }
+
+  turret_motor.writeMicroseconds(1500); // reset to default
+  rotate(120 * (max_rotation_count % 3) + ((servo_max - 1500) / 10)); // orients robot towards fire
+
+  return FIND_FIRE;
 }
+
 
 RUN_STATE find_fire() {
-  static AVOID_STATE avoiding_state = FORWARD;
-
-  if(fireDetected) {
-    
-  }
+  static FIRE_FIGHTING_STATE state = FORWARD_DEFAULT;
   
   //FSM
-  switch (avoiding_state) {
-    case FORWARD:
-      avoiding_state = forward();
+  switch(state) {
+    case FORWARD_DEFAULT:
+      state = forward_default();
+      break;
+    case FORWARD_PASS:
+      state = forward_pass();
       break;
     case STRAFE_LEFT:
-      avoiding_state = strafe_left();
+      state = strafe_left();
       break;
     case STRAFE_RIGHT:
-      avoiding_state = strafe_right();
+      state = strafe_right();
+      break;
+    case EXTINGUISH:
+      state = extinguish();
       break;
   };
 
-  return EXTINGUISH;
-}
-
-RUN_STATE put_out_fire() {
-  numFires++;
-
-  if(numFires == 2) {
-    return END;
+  if(numFires == 1 && extinguished) {
+    return DETECT;
   }
-  else {
-    return FIND_FIRE;
+  else if(numFires == 2) {
+    return END;
   }
 }
 
@@ -371,55 +393,187 @@ RUN_STATE complete() {
   disable_motors();
 }
 
-AVOID_STATE forward() {
+FIRE_FIGHTING_STATE forward_default() { // default driving forward
   Ultrasound();
   IR_Sensors();
+  gyro();
+  sweep();
+  
+  left_front_motor.writeMicroseconds(1500 + forward_speed - gyroCorrection);
+  left_rear_motor.writeMicroseconds(1500 + forward_speed - gyroCorrection);
+  right_rear_motor.writeMicroseconds(1500 + forward_speed - gyroCorrection);
+  right_front_motor.writeMicroseconds(1500 + forward_speed - gyroCorrection);  
 
-
-  if(Ultradistance < 20) {
+  if(Ultradistance < 20 || IR_MID_1_DIST < 20 || IR_MID_2_DIST < 20) {
+    stop();
+    phototransistors();
+    isFireClose();
     
+    if(fire_is_close) {
+      return EXTINGUISH;
+    }
+    else if(IR_MID_1_DIST < IR_MID_2_DIST) {
+      return STRAFE_LEFT;
+    }
+    else {
+      return STRAFE_RIGHT;
+    }
   }
   else {
-    return FORWARD; // keep going forward
+    return FORWARD_DEFAULT; // keep going forward
   }
 }
 
-AVOID_STATE strafe_left() {
+FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
   IR_Sensors();
+  gyro();
+
+  left_front_motor.writeMicroseconds(1500 + forward_speed - gyroCorrection);
+  left_rear_motor.writeMicroseconds(1500 + forward_speed - gyroCorrection);
+  right_rear_motor.writeMicroseconds(1500 + forward_speed - gyroCorrection);
+  right_front_motor.writeMicroseconds(1500 + forward_speed - gyroCorrection);  
+  delay(1000);
+  
+  if(strafed_right) {
+    return STRAFE_LEFT;
+  }
+  else if(strafed_left) {
+    return STRAFE_RIGHT;
+  }
 }
 
-AVOID_STATE strafe_right() {
+FIRE_FIGHTING_STATE strafe_left() {
   IR_Sensors();
+  gyro();
+
+  left_front_motor.writeMicroseconds(1500 - strafe_speed - gyroCorrection);
+  left_rear_motor.writeMicroseconds(1500 + strafe_speed - gyroCorrection);
+  right_rear_motor.writeMicroseconds(1500 + strafe_speed - gyroCorrection);
+  right_front_motor.writeMicroseconds(1500 - strafe_speed - gyroCorrection); 
+
+  if(IR_MID_2_DIST < 25) {
+    return STRAFE_LEFT;
+  }
+  else if(strafed_right) {
+    strafed_right = false;
+    delay(500);
+    return FORWARD_DEFAULT;
+  }
+  else {
+    strafed_left = true;
+    delay(250);
+    stop();
+    return FORWARD_PASS;
+  }
 }
 
-void driveXYZ(float x, float y, float z) { // Drives robot straight in x, y, and z // turning only occurs by itself i.e. no x and y
+FIRE_FIGHTING_STATE strafe_right() {
+  IR_Sensors();
+  gyro();
+
+  left_front_motor.writeMicroseconds(1500 + strafe_speed - gyroCorrection);
+  left_rear_motor.writeMicroseconds(1500 - strafe_speed - gyroCorrection);
+  right_rear_motor.writeMicroseconds(1500 - strafe_speed - gyroCorrection);
+  right_front_motor.writeMicroseconds(1500 + strafe_speed - gyroCorrection); 
+
+  if(IR_MID_1_DIST < 25) {
+    return STRAFE_RIGHT;
+  }
+  else if(strafed_left) {
+    strafed_left = false;
+    delay(500);
+    return FORWARD_DEFAULT;
+  }
+  else {
+    strafed_right = true;
+    delay(250);
+    stop();
+    return FORWARD_PASS;
+  }
+}
+
+FIRE_FIGHTING_STATE extinguish() {
+  numFires++;
+  
+  alignFan();
+  digitalWrite(mosfetPin, HIGH);
+  delay(10000);
+  digitalWrite(mosfetPin, LOW);
+
+  extinguished = true;
+  return FORWARD_DEFAULT;
+}
+
+void rotate(float angle) { // Drives robot straight in x, y, and z // turning only occurs by itself i.e. no x and y
   DRIVING = true;
 
-  reference[0] = x;
-  reference[1] = y;
-  reference[2] = z * (PI / 180);
+  reference[2] = angle * (PI / 180);
 
   while (DRIVING) {
     Controller(); // CONTROL LOOP
   }
 
   totalTime = 0;
+  currentAngle = 0;
   accelerated = false;
-
-  is_strafing = false;
-  is_turning = false;
 
   stop(); // stop motors
 }
 
 void sweep() {
+  static int servo_val = 1500;
+  static int max_servo_val = 0;
+  static int max_PT_sum = 0;
+  static bool CCW = true;
+  static int ccw_val = 2100;
+  static int cw_val = 900;
   phototransistors();
+
+  if(PT_sum > max_PT_sum) {
+    max_PT_sum = PT_sum;
+    max_servo_val = servo_val; 
+  }
+
+  if(CCW) {
+    servo_val += 100;
+    if(servo_val == ccw_val) {
+      CCW = false;
+    }
+  }
+  else if(!CCW) {
+    servo_val -= 100;
+    if(servo_val == cw_val) {
+      CCW = true;
+      rotate((max_servo_val - 1500) / 10); // reorient towards fire
+      servo_val = 1500;
+    }
+  }
   
+  turret_motor.writeMicroseconds(servo_val);
 }
 
-void isFireDetected() {
+void isFireClose() {
   if(PT_sum > detection_threshold) {
-    fireDetected = true;
+    fire_is_close = true;
+  }
+}
+
+void alignFan() {
+  int servo_val = 1500;
+  phototransistors();
+
+  while(abs(PT2_reading - PT3_reading) < 10) {
+    if(PT2_reading > PT3_reading) { // ccw
+      servo_val += 50;
+      turret_motor.writeMicroseconds(servo_val);
+    }
+    else { // cw
+      servo_val -= 50;
+      turret_motor.writeMicroseconds(servo_val);
+    }
+
+    delay(10);
+    phototransistors();
   }
 }
 
@@ -454,14 +608,6 @@ void Controller() {
   gyro();
   Ultrasound();
   IR_Sensors();
-
-  if(correction > 100) {
-    correction = 100;
-  }
-  else if(correction < -100) {
-    correction = -100;
-  }
-
   //----Replacement for stuff in DriveXYZ----
 
   if (reference[0] == 0) {
@@ -482,7 +628,6 @@ void Controller() {
     error[2] = 0;
   }
   else {
-    is_turning = true;
     error[2] = reference[2] - radiansAngle;
     correction = 0;
     gyroCorrection = 0;
@@ -602,8 +747,8 @@ void Ultrasound() {
 
 void IR_Sensors() {
   // Get distances from left side of robot to wall
-  IR_LONG_1_DIST = IR_dist(LEFT_FRONT);
-  IR_LONG_2_DIST = IR_dist(LEFT_BACK);
+  IR_LONG_1_DIST = IR_dist(LEFT);
+  IR_LONG_2_DIST = IR_dist(RIGHT);
   IR_MID_1_DIST = IR_dist(FRONT_LEFT);
   IR_MID_2_DIST = IR_dist(FRONT_RIGHT);
 }
@@ -633,11 +778,11 @@ float IR_dist(IR code) { // find distances using calibration curve equations
   int adc;
 
   switch (code) {
-    case LEFT_FRONT:
+    case LEFT:
       adc = analogRead(IR_LONG_1);
       if (adc != 0 && adc <= 650) {
         dist = (13391) / (pow(adc, 1.172));
-        est = Kalman(dist, last_est[0], last_var[0], LEFT_FRONT);
+        est = Kalman(dist, last_est[0], last_var[0], LEFT);
 
         //MA FILTER
         SUM[0] -= FRONT_LIR[index[0]];
@@ -652,11 +797,11 @@ float IR_dist(IR code) { // find distances using calibration curve equations
         est = last_est[0];
       }
       break;
-    case LEFT_BACK:
+    case RIGHT:
       adc = analogRead(IR_LONG_2);
       if (adc != 0 && adc <= 650) {
         dist = (11852) / (pow(adc, 1.153));
-        est = Kalman(dist, last_est[1], last_var[1], LEFT_BACK);
+        est = Kalman(dist, last_est[1], last_var[1], RIGHT);
 
         //MA FILTER
         SUM[1] -= BACK_LIR[index[1]];
@@ -728,9 +873,9 @@ float Kalman(float rawdata, float prev_est, float last_variance, IR code) {
   a_post_var = (1 - kalman_gain) * a_priori_var;
 
   switch (code) {
-    case LEFT_FRONT:
+    case LEFT:
       last_var[0] = a_post_var;
-    case LEFT_BACK:
+    case RIGHT:
       last_var[1] = a_post_var;
     case FRONT_LEFT:
       last_var[2] = a_post_var;
@@ -742,10 +887,10 @@ float Kalman(float rawdata, float prev_est, float last_variance, IR code) {
 }
 
 void phototransistors() {
-  PT1_reading = analogRead(PT1_pin);
-  PT2_reading = analogRead(PT2_pin);
-  PT3_reading = analogRead(PT3_pin);
-  PT4_reading = analogRead(PT4_pin);
+  PT1_reading = analogRead(PT1_pin); // left-most
+  PT2_reading = analogRead(PT2_pin); // left-middle
+  PT3_reading = analogRead(PT3_pin); // right-middle
+  PT4_reading = analogRead(PT4_pin); // right-most
 
   PT_sum = PT1_reading + PT2_reading + PT3_reading + PT4_reading;
 }
