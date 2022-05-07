@@ -70,13 +70,6 @@ float IR_LONG_1_DIST = 0;
 const int IR_LONG_2 = A5;
 float IR_LONG_2_DIST = 0;
 
-float IR_diff = 0;
-float correction = 0;
-float IR_wall_dist = 0;
-float IR_Angle = 0;
-const float IR_Between_Dist = 12;
-const float long_centre_offset = 4.5;
-
 // Back left mid range IR
 const int IR_MID_1 = A6;
 float IR_MID_1_DIST = 0;
@@ -84,10 +77,6 @@ float IR_MID_1_DIST = 0;
 // Back right mid range IR
 const int IR_MID_2 = A7;
 float IR_MID_2_DIST = 0;
-
-float IR_mid_diff = 0;
-float IR_mid_dist = 0;
-const float mid_centre_offset = 7.0;
 //----IR----
 
 //----IR Kalman Filter----
@@ -116,12 +105,16 @@ int PT3_reading = 0;
 int PT4_reading = 0;
 int PT_sum = 0;
 
-const int detection_threshold = 100; // SUBJECT TO CHANGE
+const int detection_threshold = 2000; // SUBJECT TO CHANGE
 //----Phototransistor----
 
 //----Obstacle Avoidance----
 bool strafed_left = false;
 bool strafed_right = false;
+int strafe_left_time = 0;
+int strafe_right_time = 0;
+int pass_start_time = 0;
+int strafe_back_time = 0;
 //----Obstacle Avoidance----
 
 //----Fire Fighting----
@@ -153,31 +146,29 @@ float averaged[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; //ORDER GOES; [0]FRONT LIR,
 //----MA Filter----
 
 //----Gyro----
-const int gyroPin = A8;           //define the pin that gyro is connected
-int gyroADC = 0;           // read out value of sensor
-float gyroSupplyVoltage = 5;      // supply voltage for gyro
-const float gyroMiddle = 505; // middle adc value of gyro
-float gyroSensitivity = 0.007;      // gyro sensitivity unit is (mv/degree/second) get from datasheet
-float rotationThreshold = 1;      // because of gyro drifting, defining rotation angular velocity less
+const int gyroPin = A8;
+int gyroADC = 0;
+float gyroSupplyVoltage = 5; 
+const float gyroMiddle = 505;
+float gyroSensitivity = 0.007; 
+float rotationThreshold = 1;      
 float angularVelocity = 0;
-// than this value will be ignored
+
 int timeElapsed = 0;
 int prev_gyroTime = 0;
 int gyroTime = 0;
-float gyroRate = 0;                      // read out value of sensor in voltage
-float angleChange = 0;
-float currentAngle = 0;               // current angle calculated by angular velocity integral on
-float gyroCorrection = 0;
-float Kp_gyro = 35;
+float gyroRate = 0;                                   
 
+float angleChange = 0;
+float currentAngle = 0;      
 float radiansAngle = 0;
+float Kp_gyro = 35;
+float gyroCorrection = 0;
 //----Gyro----
 
 //----Driving----
-bool DRIVING = false;
+bool TURNING = false;
 bool accelerated = false;
-const int forward_speed = 200;
-const int strafe_speed = 150;
 //----Driving----
 
 // Anything over 400 cm (23200 us pulse) is "out of range". Hit:If you decrease to this the ranging sensor but the timeout is short, you may not need to read up to 4meters.
@@ -189,32 +180,32 @@ Servo right_rear_motor;  // create servo object to control Vex Motor Controller 
 Servo right_front_motor;  // create servo object to control Vex Motor Controller 29
 Servo turret_motor;
 
-//----InverseKinematicValues----
+//----InverseKinematicValues---- ONLY FOR TURNING
 float L = 007.620;
 float l = 009.078;
 float R_w = 002.54;
 
-float velocity[3] = {0, 0, 0};
-float max_velocity[3] = {20, 15, 1.5}; // cm/s
+float velocity = 0;
+float max_velocity = 1.5; // rad/s
 float ang_vel[4] = {0, 0, 0, 0};
 
 float motor_speed_Value[4] = {0, 0, 0, 0};
 //----InverseKinematicValues----
 
 //----PIDValues----
-float reference[3] = {0, 0, 0};
+float reference = 0;
 float currentTime, previousTime, elapsedTime;
 float totalTime = 0;
-float error[3] = {0, 0, 0};
-float lastError[3] = {0, 0, 0};
-float rateError[3] = {0, 0, 0};
+float error = 0;
+float lastError = 0;
+float rateError = 0;
 
-float Pterm[3], Iterm[3], Dterm[3];
+float Pterm, Iterm, Dterm;
 
 // PID VALUES FOR X, Y AND Z
-float Kp[3] = {2.5, 2.2, 1.65};
-float Ki[3] = {0.1, 0.03, 0.05};
-float Kd[3] = {0, 0, 0};
+float Kp = 1.65;
+float Ki = 0.05;
+float Kd = 0;
 //----PIDValues----
 
 //Serial Pointer
@@ -316,7 +307,7 @@ void enable_motors()
   turret_motor.attach(turret);
 }
 
-RUN_STATE detect() { // initial detection and alignment towards fire from starting point - CURRENTLY 240 DEGREES OF COVERAGE
+RUN_STATE detect() { // initial detection and alignment towards fire from starting point
   int servo_val = 900;
   int servo_max = 0;
   int max_sum = 0;  
@@ -324,8 +315,8 @@ RUN_STATE detect() { // initial detection and alignment towards fire from starti
   int max_rotation_count = 1;
   int count = 0;
 
-  while(rotation_count <= 3) {
-    while(count < 10) { // full range rotation - CAN PERHAPS MODIFY FOR FULL 360 DEGREES
+  while(rotation_count <= 3) { // for 3 robot orientations
+    while(count < 10) { // full range rotation
       
       if(rotation_count % 2 == 1) {
         servo_val += (600 / 10); // 600 is range from centre, 10 is number of increments
@@ -334,10 +325,10 @@ RUN_STATE detect() { // initial detection and alignment towards fire from starti
         servo_val -= (600 / 10);
       }
       
-      turret_motor.writeMicroseconds(servo_val);
+      turret_motor.writeMicroseconds(servo_val); // sets servo position
       phototransistors();
   
-      if(PT_sum > max_sum) {
+      if(PT_sum > max_sum) { // updates the maximum values for servo and phototransistors
         servo_max = servo_val;
         max_sum = PT_sum;
         max_rotation_count = rotation_count;
@@ -346,14 +337,15 @@ RUN_STATE detect() { // initial detection and alignment towards fire from starti
       count++;
       delay(10);
     }
-    rotate(120);
+    rotate(120); // rotate robot 120 degrees
     count = 0;
     rotation_count++;
   }
 
   turret_motor.writeMicroseconds(1500); // reset to default
-  rotate(120 * (max_rotation_count % 3) + ((servo_max - 1500) / 10)); // orients robot towards fire
+  rotate(120 * (max_rotation_count % 3) + ((servo_max - 1500) / 10)); // orients robot to face fire
 
+  currentAngle = 0;
   return FIND_FIRE;
 }
 
@@ -361,7 +353,7 @@ RUN_STATE detect() { // initial detection and alignment towards fire from starti
 RUN_STATE find_fire() {
   static FIRE_FIGHTING_STATE state = FORWARD_DEFAULT;
   
-  //FSM
+  //FSM for fire fighting
   switch(state) {
     case FORWARD_DEFAULT:
       state = forward_default();
@@ -380,10 +372,10 @@ RUN_STATE find_fire() {
       break;
   };
 
-  if(numFires == 1 && extinguished) {
+  if(numFires == 1 && extinguished) { // if one fire has just been extinguished - find other fire
     return DETECT;
   }
-  else if(numFires == 2) {
+  else if(numFires == 2) { // end when all fires detected
     return END;
   }
 }
@@ -397,26 +389,23 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
   Ultrasound();
   IR_Sensors();
   gyro();
-  sweep();
+  sweep(); // sweep fan/phototransistor setup
   
-  left_front_motor.writeMicroseconds(1500 + forward_speed - gyroCorrection);
-  left_rear_motor.writeMicroseconds(1500 + forward_speed - gyroCorrection);
-  right_rear_motor.writeMicroseconds(1500 + forward_speed - gyroCorrection);
-  right_front_motor.writeMicroseconds(1500 + forward_speed - gyroCorrection);  
+  forward(200); // set motor power forward
 
-  if(Ultradistance < 20 || IR_MID_1_DIST < 20 || IR_MID_2_DIST < 20) {
+  if(Ultradistance < 20 || IR_MID_1_DIST < 20 || IR_MID_2_DIST < 20) { // if obstacle reached
     stop();
-    phototransistors();
-    isFireClose();
+    delay(100);
+    is_fire_close();
     
     if(fire_is_close) {
       return EXTINGUISH;
     }
-    else if(IR_MID_1_DIST < IR_MID_2_DIST) {
-      return STRAFE_LEFT;
+    else if(IR_MID_1_DIST < IR_MID_2_DIST) { // direction of strafe depending on front IR readings
+      return STRAFE_RIGHT;
     }
     else {
-      return STRAFE_RIGHT;
+      return STRAFE_LEFT;
     }
   }
   else {
@@ -425,15 +414,36 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
 }
 
 FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
-  IR_Sensors();
-  gyro();
-
-  left_front_motor.writeMicroseconds(1500 + forward_speed - gyroCorrection);
-  left_rear_motor.writeMicroseconds(1500 + forward_speed - gyroCorrection);
-  right_rear_motor.writeMicroseconds(1500 + forward_speed - gyroCorrection);
-  right_front_motor.writeMicroseconds(1500 + forward_speed - gyroCorrection);  
-  delay(1000);
+  pass_start_time = millis(); // get starting time
   
+  while(millis - pass_start_time < 1500) { // drive forward until 1500ms elapsed
+    IR_Sensors();
+    Ultrasound();
+    gyro();
+
+    forward(150); // drive forward
+
+    if(Ultradistance < 20 || IR_MID_1_DIST < 20 || IR_MID_2_DIST < 20) { // if obstacle detected
+      stop();
+      delay(100);
+      phototransistors();
+      is_fire_close();
+      
+      if(fire_is_close) { // put out fire if detected
+        return EXTINGUISH;
+      }
+      else if(strafed_left) { // strafe left if already strafed left
+        return STRAFE_LEFT;
+      }
+      else if(strafed_right) { // strafe right if already strafed right
+        return STRAFE_RIGHT;
+      }
+    }
+  }
+
+  strafe_back_time = millis(); // get starting time for strafe back
+
+  // strafe back to position
   if(strafed_right) {
     return STRAFE_LEFT;
   }
@@ -442,75 +452,88 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
   }
 }
 
-FIRE_FIGHTING_STATE strafe_left() {
+FIRE_FIGHTING_STATE strafe_left() { // SHOULD ALSO READ SIDE IRS FOR OBSTACLES
   IR_Sensors();
   gyro();
 
-  left_front_motor.writeMicroseconds(1500 - strafe_speed - gyroCorrection);
-  left_rear_motor.writeMicroseconds(1500 + strafe_speed - gyroCorrection);
-  right_rear_motor.writeMicroseconds(1500 + strafe_speed - gyroCorrection);
-  right_front_motor.writeMicroseconds(1500 - strafe_speed - gyroCorrection); 
+  left(150);
 
-  if(IR_MID_2_DIST < 25) {
+  if(IR_MID_2_DIST < 25) { // keep strafing if obstacle in the way
+    strafe_left_time = millis(); // update time until obstacle passed
     return STRAFE_LEFT;
   }
   else if(strafed_right) {
-    strafed_right = false;
-    delay(500);
-    return FORWARD_DEFAULT;
+    if(millis() - strafe_back_time > 500) {
+      strafed_right = false;
+      stop();
+      return FORWARD_DEFAULT;
+    }
+    else {
+      return STRAFE_LEFT;
+    }
   }
   else {
-    strafed_left = true;
-    delay(250);
-    stop();
-    return FORWARD_PASS;
+    if(millis() - strafe_left_time > 300) { // continue strafing left for 300ms once obstacle passed
+      strafed_left = true;
+      stop();
+      return FORWARD_PASS;
+    }
+    else {
+      return STRAFE_LEFT; // continue strafing left
+    }
   }
 }
 
-FIRE_FIGHTING_STATE strafe_right() {
+FIRE_FIGHTING_STATE strafe_right() { // SHOULD ALSO READ SIDEIRS FOR OBSTACLES
   IR_Sensors();
   gyro();
 
-  left_front_motor.writeMicroseconds(1500 + strafe_speed - gyroCorrection);
-  left_rear_motor.writeMicroseconds(1500 - strafe_speed - gyroCorrection);
-  right_rear_motor.writeMicroseconds(1500 - strafe_speed - gyroCorrection);
-  right_front_motor.writeMicroseconds(1500 + strafe_speed - gyroCorrection); 
+  right(150);
 
-  if(IR_MID_1_DIST < 25) {
+  if(IR_MID_1_DIST < 25) { // keep strafing if obstacle in the way
+    strafe_right_time = millis(); // update time until obstacle passed
     return STRAFE_RIGHT;
   }
   else if(strafed_left) {
-    strafed_left = false;
-    delay(500);
-    return FORWARD_DEFAULT;
+    if(millis() - strafe_back_time > 500) {
+      strafed_left = false;
+      stop();
+      return FORWARD_DEFAULT;
+    }
+    else {
+      return STRAFE_RIGHT;
+    }
   }
   else {
-    strafed_right = true;
-    delay(250);
-    stop();
-    return FORWARD_PASS;
+    if(millis() - strafe_right_time > 300) { // continue strafing for 300ms once obstacle passed
+      strafed_right = true;
+      stop();
+      return FORWARD_PASS;
+    }
+    else {
+      return STRAFE_RIGHT;
+    }
   }
 }
 
-FIRE_FIGHTING_STATE extinguish() {
-  numFires++;
+FIRE_FIGHTING_STATE extinguish() { // extinguish fire state
+  numFires++; // increment number of fires extinguished
   
-  alignFan();
-  digitalWrite(mosfetPin, HIGH);
-  delay(10000);
-  digitalWrite(mosfetPin, LOW);
+  align_fan();
+  put_out_fire();
 
   extinguished = true;
+  fire_is_close = false;
   return FORWARD_DEFAULT;
 }
 
-void rotate(float angle) { // Drives robot straight in x, y, and z // turning only occurs by itself i.e. no x and y
-  DRIVING = true;
+void rotate(float angle) { // Rotates robot using PID control - MIGHT NEED TO ADJUST GAINS DEPENDING ON ANGLE
+  TURNING = true;
 
-  reference[2] = angle * (PI / 180);
+  reference = angle * (PI / 180); // convert to radians
 
-  while (DRIVING) {
-    Controller(); // CONTROL LOOP
+  while (TURNING) {
+    TurnController(); // CONTROL LOOP
   }
 
   totalTime = 0;
@@ -529,55 +552,70 @@ void sweep() {
   static int cw_val = 900;
   phototransistors();
 
-  if(PT_sum > max_PT_sum) {
+  if(PT_sum > max_PT_sum) { // if phototransistors sum higher, update max position and value
     max_PT_sum = PT_sum;
     max_servo_val = servo_val; 
   }
 
-  if(CCW) {
+  if(CCW) { // sweep ccw
     servo_val += 100;
     if(servo_val == ccw_val) {
       CCW = false;
     }
   }
-  else if(!CCW) {
+  else if(!CCW) { // sweep cw
     servo_val -= 100;
     if(servo_val == cw_val) {
       CCW = true;
-      rotate((max_servo_val - 1500) / 10); // reorient towards fire
-      servo_val = 1500;
+      stop();
+      rotate((max_servo_val - 1500) / 10); // reorient towards fire - MOST LIKELY NEED TO ADJUST GAINS (ANGLE TOO SMALL)
+      servo_val = 1500; // reset servo position
     }
   }
   
-  turret_motor.writeMicroseconds(servo_val);
+  turret_motor.writeMicroseconds(servo_val); // set turret angle
 }
 
-void isFireClose() {
-  if(PT_sum > detection_threshold) {
+void is_fire_close() {
+  int prev_pos = turret_motor.read(); // read where servo is currently
+  turret_motor.writeMicroseconds(1500); // reposition to centre - SHOULD PROBABLY DO A FULL SWEEP
+  phototransistors();
+  
+  if(PT_sum > detection_threshold) { // if greater than threshold - i.e. in range
     fire_is_close = true;
+  }
+  else {
+    turret_motor.writeMicroseconds(prev_pos);
   }
 }
 
-void alignFan() {
+void align_fan() {
   int servo_val = 1500;
   phototransistors();
 
-  while(abs(PT2_reading - PT3_reading) < 10) {
+  while(abs(PT2_reading - PT3_reading) < 10) { // read middle phototransistors
     if(PT2_reading > PT3_reading) { // ccw
-      servo_val += 50;
+      servo_val += 50; // increment ccw servo position
       turret_motor.writeMicroseconds(servo_val);
     }
     else { // cw
-      servo_val -= 50;
+      servo_val -= 50; // increment cw servo position
       turret_motor.writeMicroseconds(servo_val);
     }
 
     delay(10);
-    phototransistors();
+    phototransistors(); // read phototransistors
   }
 }
 
-//----OPEN LOOP DRIVING FUNCTIONS----
+void put_out_fire() {
+  // Set mosfet pin high for 10 seconds (fan)
+  digitalWrite(mosfetPin, HIGH);
+  delay(10000);
+  digitalWrite(mosfetPin, LOW);
+}
+
+//----OPEN LOOP TURNING FUNCTIONS----
 void stop() //Stop
 {
   left_front_motor.writeMicroseconds(1500);
@@ -601,52 +639,45 @@ void cw(int speedval)
   right_rear_motor.writeMicroseconds(1500 + speedval);
   right_front_motor.writeMicroseconds(1500 + speedval);
 }
-//----OPEN LOOP DRIVING FUNCTIONS----
 
-void Controller() {
+void forward(int speedval) // SHOULD PROBABLY IMPLEMENT ACCELERATION
+{
+  
+  left_front_motor.writeMicroseconds(1500 + speedval - gyroCorrection);
+  left_rear_motor.writeMicroseconds(1500 + speedval - gyroCorrection);
+  right_rear_motor.writeMicroseconds(1500 + speedval - gyroCorrection);
+  right_front_motor.writeMicroseconds(1500 + speedval - gyroCorrection);
+}
+
+void left(int speedval) // SHOULD PROBABLY IMPLEMENT ACCELERATION
+{
+  left_front_motor.writeMicroseconds(1500 - speedval - gyroCorrection);
+  left_rear_motor.writeMicroseconds(1500 + speedval - gyroCorrection);
+  right_rear_motor.writeMicroseconds(1500 + speedval - gyroCorrection);
+  right_front_motor.writeMicroseconds(1500 - speedval - gyroCorrection);
+}
+
+void right(int speedval) // SHOULD PROBABLY IMPLEMENT ACCELERATION
+{
+  left_front_motor.writeMicroseconds(1500 + speedval - gyroCorrection);
+  left_rear_motor.writeMicroseconds(1500 - speedval - gyroCorrection);
+  right_rear_motor.writeMicroseconds(1500 - speedval - gyroCorrection);
+  right_front_motor.writeMicroseconds(1500 + speedval - gyroCorrection);
+}
+//----OPEN LOOP TURNING FUNCTIONS----
+
+void TurnController() { // controller for turning
 
   gyro();
-  Ultrasound();
-  IR_Sensors();
-  //----Replacement for stuff in DriveXYZ----
-
-  if (reference[0] == 0) {
-    error[0] = 0;
-  }
-  else {
-    error[0] = reference[0] - Ultradistance;
-  }
-
-  if (reference[1] == 0) {
-    error[1] = 0;
-  }
-  else {
-    error[1] = reference[1] - IR_wall_dist;
-  }
-
-  if (reference[2] == 0) {
-    error[2] = 0;
-  }
-  else {
-    error[2] = reference[2] - radiansAngle;
-    correction = 0;
-    gyroCorrection = 0;
-  }
-
-  //----Replacement for stuff in DriveXYZ----
-
+  error = reference - radiansAngle;
   PID_Controller();
   inverse_kinematics();
   set_motor_speed();
   set_motors();
 
-  // exit loop
-  if ((abs(error[0]) + abs(error[1])) <= 2.5 && (reference[2] == 0)) { // XY exit condition - COULD BE TWEAKED ALONGSIDE GAINS
-    DRIVING = false;
-    return;
-  }
-  else if (abs(error[2]) < 0.1 && (!(reference[2] == 0))) { // turning exit condition
-    DRIVING = false;
+  // exit condition
+  if (abs(error < 0.1)) { // turning exit condition
+    TURNING = false;
     currentAngle = 0;
     return;
   }
@@ -660,78 +691,76 @@ void PID_Controller() {
   elapsedTime = (currentTime - previousTime) / 1000.0;
   totalTime += elapsedTime;
 
-  for (int i = 0; i < 3; i++) {
+  // get P, I, and D terms for velocity
+  Pterm = Kp * error;
+  Iterm += Ki * error * elapsedTime;
+  Dterm = Kd * ((error - lastError) / elapsedTime);
 
-    Pterm[i] = Kp[i] * error[i];
-    Iterm[i] += Ki[i] * error[i] * elapsedTime;
-    Dterm[i] = Kd[i] * ((error[i] - lastError[i]) / elapsedTime);
+  // anti wind-up - Iterm and Pterm (More powerful anti windup - constrains total control effort to always be <= max velocity)
+  if (abs(Pterm) > max_velocity) {
 
-    // anti wind-up - Iterm and Pterm (More powerful anti windup - constrains total control effort to always be <= max velocity)
-    if (abs(Pterm[i]) > max_velocity[i]) {
-
-      // constrains Iterm such that Pterm + Iterm <= maximum velocity
-      if (Pterm[i] < 0) {
-        Pterm[i] = (-1 * max_velocity[i]);
-      }
-      else {
-        Pterm[i] = max_velocity[i];
-      }
-    }
-
-    if (abs(Iterm[i] + Pterm[i]) > max_velocity[i]) {
-
-      // constrains Iterm such that Pterm + Iterm <= maximum velocity
-      if ((Iterm[i] + Pterm[i]) < 0) {
-        Iterm[i] = (-1 * max_velocity[i]) - Pterm[i];
-      }
-      else {
-        Iterm[i] = max_velocity[i] - Pterm[i];
-      }
-    }
-
-    velocity[i] = Pterm[i] + Iterm[i] + Dterm[i];
-
-    // constrain to max velocity - just to ensure velocity <= maximum velocity
-    if (abs(velocity[i]) > max_velocity[i]) {
-      if (velocity[i] < 0) {
-        velocity[i] = -1 * max_velocity[i];
-      }
-      else {
-        velocity[i] = max_velocity[i];
-      }
-    }
-    
-    //accelerate
-    if(totalTime < 0.5) {
-      velocity[i] = (totalTime / 0.5) * velocity[i];
+    // constrains Iterm such that Pterm + Iterm <= maximum velocity
+    if (Pterm < 0) {
+      Pterm = (-1 * max_velocity);
     }
     else {
-      accelerated = true;
+      Pterm = max_velocity;
     }
-
-    lastError[i] = error[i];
   }
+
+  if (abs(Iterm + Pterm) > max_velocity) {
+
+    // constrains Iterm such that Pterm + Iterm <= maximum velocity
+    if ((Iterm + Pterm) < 0) {
+      Iterm = (-1 * max_velocity) - Pterm;
+    }
+    else {
+      Iterm = max_velocity - Pterm;
+    }
+  }
+
+  velocity = Pterm + Iterm + Dterm; // get turning velocity 
+
+  // constrain to max velocity - just to ensure velocity <= maximum velocity
+  if (abs(velocity) > max_velocity) {
+    if (velocity < 0) {
+      velocity = -1 * max_velocity;
+    }
+    else {
+      velocity = max_velocity;
+    }
+  }
+  
+  //accelerate
+  if(totalTime < 0.5) {
+    velocity = (totalTime / 0.5) * velocity;
+  }
+  else {
+    accelerated = true;
+  }
+
+  lastError = error;
   previousTime = currentTime;
 }
 
-void inverse_kinematics() {
-  ang_vel[0] = (-velocity[0] + velocity[1] + ((L + l) * velocity[2])) / R_w; // left front
-  ang_vel[1] = (-velocity[0] - velocity[1] + ((L + l) * velocity[2])) / R_w; // left rear
-  ang_vel[2] = (velocity[0] - velocity[1] + ((L + l) * velocity[2])) / R_w; // right rear
-  ang_vel[3] = (velocity[0] + velocity[1] + ((L + l) * velocity[2])) / R_w; // right front
+void inverse_kinematics() { // gets angular velocity of wheels for turning
+  ang_vel[0] = velocity / R_w; // left front
+  ang_vel[1] = velocity / R_w; // left rear
+  ang_vel[2] = velocity / R_w; // right rear
+  ang_vel[3] = velocity / R_w; // right front
 }
 
-void set_motor_speed() {
+void set_motor_speed() { // gets motor speed based on angular velocity values
   for (int i = 0; i < 4; i++) {
     motor_speed_Value[i] = ang_vel[i] * 28; // scale angular velocity to motor speed value - COULD BE TUNED BETTER
   }
 }
 
-void set_motors() {
-  left_front_motor.writeMicroseconds(1500 + motor_speed_Value[0] - gyroCorrection);
-  left_rear_motor.writeMicroseconds(1500 + motor_speed_Value[1] - gyroCorrection);
-  right_rear_motor.writeMicroseconds(1500 + motor_speed_Value[2] - gyroCorrection);
-  right_front_motor.writeMicroseconds(1500 + motor_speed_Value[3] - gyroCorrection);
+void set_motors() { // sets motor speed
+  left_front_motor.writeMicroseconds(1500 + motor_speed_Value[0]);
+  left_rear_motor.writeMicroseconds(1500 + motor_speed_Value[1]);
+  right_rear_motor.writeMicroseconds(1500 + motor_speed_Value[2]);
+  right_front_motor.writeMicroseconds(1500 + motor_speed_Value[3]);
 }
 
 void Ultrasound() {
@@ -892,6 +921,6 @@ void phototransistors() {
   PT3_reading = analogRead(PT3_pin); // right-middle
   PT4_reading = analogRead(PT4_pin); // right-most
 
-  PT_sum = PT1_reading + PT2_reading + PT3_reading + PT4_reading;
+  PT_sum = PT1_reading + PT2_reading + PT3_reading + PT4_reading; // gets sum of all 4 phototransistors
 }
 //----WRITTEN HELPER FUNCTIONS----
