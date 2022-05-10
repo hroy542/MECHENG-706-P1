@@ -30,7 +30,7 @@ const byte left_front = 46;
 const byte left_rear = 47;
 const byte right_rear = 50;
 const byte right_front = 51;
-const byte turret = 52;
+const byte turret = 25;
 
 //----Bluetooth Comms----
 #define BLUETOOTH_RX 10
@@ -115,6 +115,7 @@ const int detection_threshold = 2000; // SUBJECT TO CHANGE
 //----Obstacle Avoidance----
 bool strafed_left = false;
 bool strafed_right = false;
+bool strafe_reversed = false;
 int strafe_left_time = 0;
 int strafe_right_time = 0;
 int pass_start_time = 0;
@@ -166,7 +167,7 @@ float gyroRate = 0;
 float angleChange = 0;
 float currentAngle = 0;      
 float radiansAngle = 0;
-float Kp_gyro = 35;
+float Kp_gyro = 30;
 float gyroCorrection = 0;
 //----Gyro----
 
@@ -190,7 +191,7 @@ float l = 009.078;
 float R_w = 002.54;
 
 float velocity = 0;
-float max_velocity = 1.5; // rad/s
+float max_velocity = 1.6; // rad/s
 float ang_vel[4] = {0, 0, 0, 0};
 
 float motor_speed_Value[4] = {0, 0, 0, 0};
@@ -201,6 +202,7 @@ float reference = 0;
 float currentTime, previousTime, elapsedTime;
 float turningTime = 0; // for acceleration when turning
 float drivingTime = 0; // for acceleration when driving X and Y
+float initalTime = 0;
 float error = 0;
 float lastError = 0;
 float rateError = 0;
@@ -208,8 +210,8 @@ float rateError = 0;
 float Pterm, Iterm, Dterm;
 
 // PID VALUES FOR ROTATION
-float Kp = 1.65;
-float Ki = 0.05;
+float Kp = 2;
+float Ki = 0.1;
 float Kd = 0;
 
 float Kp_turn = 1250;
@@ -261,7 +263,6 @@ STATE initialising() {
 }
 
 STATE running() {
-
   static RUN_STATE running_state = DETECT;
 
   //FSM
@@ -315,6 +316,7 @@ void enable_motors()
 }
 
 RUN_STATE detect() { // initial detection and alignment towards fire from starting point
+
   int servo_val = 900;
   int servo_max = 0;
   int max_sum = 0;  
@@ -323,36 +325,39 @@ RUN_STATE detect() { // initial detection and alignment towards fire from starti
   int count = 0;
 
   while(rotation_count <= 3) { // for 3 robot orientations
-    while(count < 10) { // full range rotation
+    while(count < 20) { // full range rotation
       
       if(rotation_count % 2 == 1) {
-        servo_val += (600 / 10); // 600 is range from centre, 10 is number of increments
+        servo_val += (1200 / 20); // 600 is range from centre, 10 is number of increments
       }
       else {
-        servo_val -= (600 / 10);
+        servo_val -= (1200 / 20);
       }
       
       turret_motor.writeMicroseconds(servo_val); // sets servo position
-      phototransistors();
+      //phototransistors();
   
-      if(PT_sum > max_sum) { // updates the maximum values for servo and phototransistors
-        servo_max = servo_val;
-        max_sum = PT_sum;
-        max_rotation_count = rotation_count;
-      }
+      //if(PT_sum > max_sum) { // updates the maximum values for servo and phototransistors
+       // servo_max = servo_val;
+       // max_sum = PT_sum;
+       // max_rotation_count = rotation_count;
+      //}
 
       count++;
-      delay(10);
+      delay(250);
     }
+    currentAngle = 0;
+    radiansAngle = 0;
     rotate(120); // rotate robot 120 degrees
     count = 0;
     rotation_count++;
   }
 
   turret_motor.writeMicroseconds(1500); // reset to default
-  rotate(120 * (max_rotation_count % 3) + ((servo_max - 1500) / 10)); // orients robot to face fire
+  //rotate(120 * ((max_rotation_count - 1) % 3) + ((servo_max - 1500) / 10)); // orients robot to face fire
 
   currentAngle = 0;
+
   return FIND_FIRE;
 }
 
@@ -385,6 +390,9 @@ RUN_STATE find_fire() {
   else if(numFires == 2) { // end when all fires detected
     return END;
   }
+  else {
+    return FIND_FIRE;
+  }
 }
 
 RUN_STATE complete() {
@@ -393,14 +401,16 @@ RUN_STATE complete() {
 }
 
 FIRE_FIGHTING_STATE forward_default() { // default driving forward
+  static int power = 200;
+  
   Ultrasound();
   IR_Sensors();
   Gyro();
   Sweep(); // sweep fan/phototransistor setup
-  
-  forward(200); // set motor power forward
 
-  if(Ultradistance < 20 || IR_MID_1_DIST < 20 || IR_MID_2_DIST < 20) { // if obstacle reached
+  forward(power); // set motor power forward
+
+  if(Ultradistance < 20 || IR_MID_1_DIST < 20 || IR_MID_2_DIST < 20) { // if obstacle reached - could slow down to a stop 20cm away
     stop();
     delay(100);
     is_fire_close();
@@ -421,6 +431,7 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
 }
 
 FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
+  int power = 150;
   pass_start_time = millis(); // get starting time
   
   while(millis - pass_start_time < 1500) { // drive forward until 1500ms elapsed
@@ -428,7 +439,7 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
     Ultrasound();
     Gyro();
 
-    forward(150); // drive forward
+    forward(power); // drive forward
 
     if(Ultradistance < 20 || IR_MID_1_DIST < 20 || IR_MID_2_DIST < 20) { // if obstacle detected
       stop();
@@ -459,11 +470,18 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
   }
 }
 
-FIRE_FIGHTING_STATE strafe_left() { // SHOULD ALSO READ SIDE IRS FOR OBSTACLES
+FIRE_FIGHTING_STATE strafe_left() {
+  static int power = -150;
   IR_Sensors();
   Gyro();
 
-  strafe(-150); // left strafe
+  strafe(power); // left strafe
+
+  if(IR_LONG_1_DIST < 20) { // if left side IR detects obstacle strafe other way to avoid obstacle
+    stop();
+    strafe_reversed = true;
+    return STRAFE_RIGHT;
+  }
 
   if(IR_MID_2_DIST < 30) { // keep strafing if obstacle in the way
     strafe_left_time = millis(); // update time until obstacle passed
@@ -491,11 +509,18 @@ FIRE_FIGHTING_STATE strafe_left() { // SHOULD ALSO READ SIDE IRS FOR OBSTACLES
   }
 }
 
-FIRE_FIGHTING_STATE strafe_right() { // SHOULD ALSO READ SIDE IRS FOR OBSTACLES
+FIRE_FIGHTING_STATE strafe_right() { 
+  static int power = 150;
   IR_Sensors();
   Gyro();
 
-  strafe(150);
+  strafe(power);
+
+  if(IR_LONG_2_DIST < 20) { // if right side IR detects obstacle strafe other way to avoid obstacle
+    stop();
+    strafe_reversed = true;
+    return STRAFE_LEFT;
+  }
 
   if(IR_MID_1_DIST < 30) { // keep strafing if obstacle in the way
     strafe_right_time = millis(); // update time until obstacle passed
@@ -586,12 +611,12 @@ void Sweep() {
   static bool CCW = true;
   static int ccw_val = 2100;
   static int cw_val = 900;
-  phototransistors();
+  //phototransistors();
 
-  if(PT_sum > max_PT_sum) { // if phototransistors sum higher, update max position and value
-    max_PT_sum = PT_sum;
-    max_servo_val = servo_val; 
-  }
+  //if(PT_sum > max_PT_sum) { // if phototransistors sum higher, update max position and value
+    //max_PT_sum = PT_sum;
+    //max_servo_val = servo_val; 
+  //}
 
   if(CCW) { // sweep ccw
     servo_val += 100;
@@ -604,12 +629,13 @@ void Sweep() {
     if(servo_val == cw_val) {
       CCW = true;
       stop();
-      rotate((max_servo_val - 1500) / 10); // reorient towards fire - MOST LIKELY NEED TO ADJUST GAINS (ANGLE TOO SMALL)
+      //rotate((max_servo_val - 1500) / 10); // reorient towards fire - MOST LIKELY NEED TO ADJUST GAINS (ANGLE TOO SMALL)
       servo_val = 1500; // reset servo position
     }
   }
   
   turret_motor.writeMicroseconds(servo_val); // set turret angle
+  delay(50);
 }
 
 void is_fire_close() {
@@ -633,8 +659,9 @@ void is_fire_close() {
 }
 
 void align_fan() {
+  int servo_val = turret_motor.read();
   phototransistors();
-
+  
   while(abs(PT2_reading - PT3_reading) < 10) { // read middle phototransistors
     if(PT2_reading > PT3_reading) { // ccw
       servo_val += 50; // increment ccw servo position
@@ -683,16 +710,12 @@ void cw(int speedval)
   right_front_motor.writeMicroseconds(1500 + speedval);
 }
 
-void forward(int speedval) // SHOULD PROBABLY IMPLEMENT ACCELERATION
+void forward(int speedval) // SHOULD PROBABLY IMPLEMENT ACCELERATION - LOW PRIORITY
 {
-  if(drivingTime < 0.5) {
-    speedval = (drivingTime / 0.5) * speedval;
-    gyroCorrection = 0;
-  }
   left_front_motor.writeMicroseconds(1500 + speedval - gyroCorrection);
   left_rear_motor.writeMicroseconds(1500 + speedval - gyroCorrection);
-  right_rear_motor.writeMicroseconds(1500 + speedval - gyroCorrection);
-  right_front_motor.writeMicroseconds(1500 + speedval - gyroCorrection);
+  right_rear_motor.writeMicroseconds(1500 - speedval - gyroCorrection);
+  right_front_motor.writeMicroseconds(1500 - speedval - gyroCorrection);
 }
 
 void strafe(int speedval) // +ve = right, -ve = left. SHOULD PROBABLY IMPLEMENT ACCELERATION
@@ -714,7 +737,7 @@ void TurnController() { // controller for turning
   set_motors();
 
   // exit condition
-  if (abs(error < 0.1)) { // turning exit condition
+  if (abs(error < 0.15)) { // turning exit condition
     TURNING = false;
     currentAngle = 0;
     return;
@@ -777,15 +800,16 @@ void PID_Controller() {
     accelerated = true;
   }
 
+
   lastError = error;
   previousTime = currentTime;
 }
 
 void inverse_kinematics() { // gets angular velocity of wheels for turning
-  ang_vel[0] = velocity / R_w; // left front
-  ang_vel[1] = velocity / R_w; // left rear
-  ang_vel[2] = velocity / R_w; // right rear
-  ang_vel[3] = velocity / R_w; // right front
+  ang_vel[0] = (L + l) * velocity / R_w; // left front
+  ang_vel[1] = (L + l) * velocity / R_w; // left rear
+  ang_vel[2] = (L + l) * velocity / R_w; // right rear
+  ang_vel[3] = (L + l) * velocity / R_w; // right front
 }
 
 void set_motor_speed() { // gets motor speed based on angular velocity values
