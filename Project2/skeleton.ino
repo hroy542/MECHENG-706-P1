@@ -62,21 +62,25 @@ enum IR {
   RIGHT, // long
 };
 
-// Left front long range IR
+// Left long range IR
 const int IR_LONG_1 = A4;
 float IR_LONG_1_DIST = 0;
 
-// Left back long range IR
+// Right long range IR
 const int IR_LONG_2 = A5;
 float IR_LONG_2_DIST = 0;
 
-// Back left mid range IR
+const float IR_LONG_OFFSET = 5; // distance from IR to centre of robot 
+
+// Front left mid range IR
 const int IR_MID_1 = A6;
 float IR_MID_1_DIST = 0;
 
-// Back right mid range IR
+// Front right mid range IR
 const int IR_MID_2 = A7;
 float IR_MID_2_DIST = 0;
+
+const float IR_MID_OFFSET = 12.0; // distance from IR to centre of robot
 //----IR----
 
 //----IR Kalman Filter----
@@ -87,7 +91,7 @@ float sensor_noise = 6;    // Change the value of sensor noise to get different 
 //----IR Kalman Filter----
 
 //----Phototransistor----
-enum PT {
+enum PT { // might not need
   PT1, // left most
   PT2, // left centre
   PT3, // right centre
@@ -456,9 +460,9 @@ FIRE_FIGHTING_STATE strafe_left() { // SHOULD ALSO READ SIDE IRS FOR OBSTACLES
   IR_Sensors();
   gyro();
 
-  left(150);
+  strafe(-150);
 
-  if(IR_MID_2_DIST < 25) { // keep strafing if obstacle in the way
+  if(IR_MID_2_DIST < 30) { // keep strafing if obstacle in the way
     strafe_left_time = millis(); // update time until obstacle passed
     return STRAFE_LEFT;
   }
@@ -488,9 +492,9 @@ FIRE_FIGHTING_STATE strafe_right() { // SHOULD ALSO READ SIDEIRS FOR OBSTACLES
   IR_Sensors();
   gyro();
 
-  right(150);
+  strafe(150);
 
-  if(IR_MID_1_DIST < 25) { // keep strafing if obstacle in the way
+  if(IR_MID_1_DIST < 30) { // keep strafing if obstacle in the way
     strafe_right_time = millis(); // update time until obstacle passed
     return STRAFE_RIGHT;
   }
@@ -649,15 +653,7 @@ void forward(int speedval) // SHOULD PROBABLY IMPLEMENT ACCELERATION
   right_front_motor.writeMicroseconds(1500 + speedval - gyroCorrection);
 }
 
-void left(int speedval) // SHOULD PROBABLY IMPLEMENT ACCELERATION
-{
-  left_front_motor.writeMicroseconds(1500 - speedval - gyroCorrection);
-  left_rear_motor.writeMicroseconds(1500 + speedval - gyroCorrection);
-  right_rear_motor.writeMicroseconds(1500 + speedval - gyroCorrection);
-  right_front_motor.writeMicroseconds(1500 - speedval - gyroCorrection);
-}
-
-void right(int speedval) // SHOULD PROBABLY IMPLEMENT ACCELERATION
+void strafe(int speedval) // +ve = right, -ve = left. SHOULD PROBABLY IMPLEMENT ACCELERATION
 {
   left_front_motor.writeMicroseconds(1500 + speedval - gyroCorrection);
   left_rear_motor.writeMicroseconds(1500 - speedval - gyroCorrection);
@@ -774,12 +770,11 @@ void Ultrasound() {
   Ultradistance = ultra_centre_offset + (Ultraduration * 0.034 / 2);
 }
 
-void IR_Sensors() {
-  // Get distances from left side of robot to wall
-  IR_LONG_1_DIST = IR_dist(LEFT);
-  IR_LONG_2_DIST = IR_dist(RIGHT);
-  IR_MID_1_DIST = IR_dist(FRONT_LEFT);
-  IR_MID_2_DIST = IR_dist(FRONT_RIGHT);
+void IR_Sensors() { // Calculates distances from centre of robot to where IR detects
+  IR_LONG_1_DIST = IR_LONG_OFFSET + IR_dist(LEFT);
+  IR_LONG_2_DIST = IR_LONG_OFFSET + IR_dist(RIGHT);
+  IR_MID_1_DIST = IR_MID_OFFSET + IR_dist(FRONT_LEFT);
+  IR_MID_2_DIST = IR_MID_OFFSET + IR_dist(FRONT_RIGHT);
 }
 
 void gyro() { // could be tuned better
