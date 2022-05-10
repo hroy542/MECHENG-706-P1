@@ -199,17 +199,20 @@ float motor_speed_Value[4] = {0, 0, 0, 0};
 //----PIDValues----
 float reference = 0;
 float currentTime, previousTime, elapsedTime;
-float totalTime = 0;
+float turningTime = 0; // for acceleration when turning
+float drivingTime = 0; // for acceleration when driving X and Y
 float error = 0;
 float lastError = 0;
 float rateError = 0;
 
 float Pterm, Iterm, Dterm;
 
-// PID VALUES FOR X, Y AND Z
+// PID VALUES FOR ROTATION
 float Kp = 1.65;
 float Ki = 0.05;
 float Kd = 0;
+
+float Kp_turn = 1250;
 //----PIDValues----
 
 //Serial Pointer
@@ -392,8 +395,8 @@ RUN_STATE complete() {
 FIRE_FIGHTING_STATE forward_default() { // default driving forward
   Ultrasound();
   IR_Sensors();
-  gyro();
-  sweep(); // sweep fan/phototransistor setup
+  Gyro();
+  Sweep(); // sweep fan/phototransistor setup
   
   forward(200); // set motor power forward
 
@@ -423,7 +426,7 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
   while(millis - pass_start_time < 1500) { // drive forward until 1500ms elapsed
     IR_Sensors();
     Ultrasound();
-    gyro();
+    Gyro();
 
     forward(150); // drive forward
 
@@ -458,16 +461,16 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
 
 FIRE_FIGHTING_STATE strafe_left() { // SHOULD ALSO READ SIDE IRS FOR OBSTACLES
   IR_Sensors();
-  gyro();
+  Gyro();
 
-  strafe(-150);
+  strafe(-150); // left strafe
 
   if(IR_MID_2_DIST < 30) { // keep strafing if obstacle in the way
     strafe_left_time = millis(); // update time until obstacle passed
     return STRAFE_LEFT;
   }
-  else if(strafed_right) {
-    if(millis() - strafe_back_time > 500) {
+  else if(strafed_right) { // if already strafed right to avoid obstacle
+    if(millis() - strafe_back_time > 500) { // strafe left for 500ms (will need to be adjusted) then go forward
       strafed_right = false;
       stop();
       return FORWARD_DEFAULT;
@@ -477,7 +480,7 @@ FIRE_FIGHTING_STATE strafe_left() { // SHOULD ALSO READ SIDE IRS FOR OBSTACLES
     }
   }
   else {
-    if(millis() - strafe_left_time > 300) { // continue strafing left for 300ms once obstacle passed
+    if(millis() - strafe_left_time > 300) { // continue strafing left for 300ms (needs to be tweaked) once obstacle passed - to ensure cleared
       strafed_left = true;
       stop();
       return FORWARD_PASS;
@@ -488,9 +491,9 @@ FIRE_FIGHTING_STATE strafe_left() { // SHOULD ALSO READ SIDE IRS FOR OBSTACLES
   }
 }
 
-FIRE_FIGHTING_STATE strafe_right() { // SHOULD ALSO READ SIDEIRS FOR OBSTACLES
+FIRE_FIGHTING_STATE strafe_right() { // SHOULD ALSO READ SIDE IRS FOR OBSTACLES
   IR_Sensors();
-  gyro();
+  Gyro();
 
   strafe(150);
 
@@ -498,8 +501,8 @@ FIRE_FIGHTING_STATE strafe_right() { // SHOULD ALSO READ SIDEIRS FOR OBSTACLES
     strafe_right_time = millis(); // update time until obstacle passed
     return STRAFE_RIGHT;
   }
-  else if(strafed_left) {
-    if(millis() - strafe_back_time > 500) {
+  else if(strafed_left) { // if already strafed right to avoid obstacle
+    if(millis() - strafe_back_time > 500) { // strafe right for 500ms then go forward again
       strafed_left = false;
       stop();
       return FORWARD_DEFAULT;
@@ -509,7 +512,7 @@ FIRE_FIGHTING_STATE strafe_right() { // SHOULD ALSO READ SIDEIRS FOR OBSTACLES
     }
   }
   else {
-    if(millis() - strafe_right_time > 300) { // continue strafing for 300ms once obstacle passed
+    if(millis() - strafe_right_time > 300) { // continue strafing left for 300ms once obstacle passed - to ensure cleared
       strafed_right = true;
       stop();
       return FORWARD_PASS;
@@ -540,14 +543,43 @@ void rotate(float angle) { // Rotates robot using PID control - MIGHT NEED TO AD
     TurnController(); // CONTROL LOOP
   }
 
-  totalTime = 0;
+  turningTime = 0;
   currentAngle = 0;
   accelerated = false;
 
   stop(); // stop motors
 }
 
-void sweep() {
+void rotate_small(float angle) { // P Control rotate function for small angles
+  float power;
+
+  angle = angle * (PI / 180);
+
+  currentAngle = 0;
+
+  do {
+    Gyro();
+    power = (angle - radiansAngle) * Kp_turn;
+
+    // constrain
+    if (power > 120) {
+      power = 120;
+    }
+    else if (power < -120) {
+      power = -120;
+    }
+
+    // send power
+    left_front_motor.writeMicroseconds(1500 + power);
+    left_rear_motor.writeMicroseconds(1500 + power);
+    right_rear_motor.writeMicroseconds(1500 + power);
+    right_front_motor.writeMicroseconds(1500 + power);
+  } while (abs(radiansAngle) < abs(angle)); // exit condition
+
+  return;
+}
+
+void Sweep() {
   static int servo_val = 1500;
   static int max_servo_val = 0;
   static int max_PT_sum = 0;
@@ -582,19 +614,25 @@ void sweep() {
 
 void is_fire_close() {
   int prev_pos = turret_motor.read(); // read where servo is currently
-  turret_motor.writeMicroseconds(1500); // reposition to centre - SHOULD PROBABLY DO A FULL SWEEP
+  int servo_val = 900;
+  turret_motor.writeMicroseconds(servo_val); // reposition to centre - SHOULD PROBABLY DO A FULL SWEEP
   phototransistors();
+
+  while(servo_val < 2100) { // sweep servo to see if fire is close
+    
+    if(PT_sum > detection_threshold) { // if greater than threshold - i.e. in range - return
+      fire_is_close = true;
+      return;
+    }
+
+    servo_val += 100;
+    delay(10);
+  }
   
-  if(PT_sum > detection_threshold) { // if greater than threshold - i.e. in range
-    fire_is_close = true;
-  }
-  else {
-    turret_motor.writeMicroseconds(prev_pos);
-  }
+  turret_motor.writeMicroseconds(prev_pos); // set turret position to what is was before entering function
 }
 
 void align_fan() {
-  int servo_val = 1500;
   phototransistors();
 
   while(abs(PT2_reading - PT3_reading) < 10) { // read middle phototransistors
@@ -617,6 +655,7 @@ void put_out_fire() {
   digitalWrite(mosfetPin, HIGH);
   delay(10000);
   digitalWrite(mosfetPin, LOW);
+  delay(100);
 }
 
 //----OPEN LOOP TURNING FUNCTIONS----
@@ -646,7 +685,10 @@ void cw(int speedval)
 
 void forward(int speedval) // SHOULD PROBABLY IMPLEMENT ACCELERATION
 {
-  
+  if(drivingTime < 0.5) {
+    speedval = (drivingTime / 0.5) * speedval;
+    gyroCorrection = 0;
+  }
   left_front_motor.writeMicroseconds(1500 + speedval - gyroCorrection);
   left_rear_motor.writeMicroseconds(1500 + speedval - gyroCorrection);
   right_rear_motor.writeMicroseconds(1500 + speedval - gyroCorrection);
@@ -664,7 +706,7 @@ void strafe(int speedval) // +ve = right, -ve = left. SHOULD PROBABLY IMPLEMENT 
 
 void TurnController() { // controller for turning
 
-  gyro();
+  Gyro();
   error = reference - radiansAngle;
   PID_Controller();
   inverse_kinematics();
@@ -685,7 +727,7 @@ void PID_Controller() {
 
   currentTime = millis();
   elapsedTime = (currentTime - previousTime) / 1000.0;
-  totalTime += elapsedTime;
+  turningTime += elapsedTime;
 
   // get P, I, and D terms for velocity
   Pterm = Kp * error;
@@ -728,8 +770,8 @@ void PID_Controller() {
   }
   
   //accelerate
-  if(totalTime < 0.5) {
-    velocity = (totalTime / 0.5) * velocity;
+  if(turningTime < 0.5) {
+    velocity = (turningTime / 0.5) * velocity;
   }
   else {
     accelerated = true;
@@ -777,7 +819,7 @@ void IR_Sensors() { // Calculates distances from centre of robot to where IR det
   IR_MID_2_DIST = IR_MID_OFFSET + IR_dist(FRONT_RIGHT);
 }
 
-void gyro() { // could be tuned better
+void Gyro() { // could be tuned better
   gyroTime = millis();
 
   timeElapsed = gyroTime - prev_gyroTime;
