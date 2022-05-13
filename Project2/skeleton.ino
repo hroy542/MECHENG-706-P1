@@ -401,7 +401,7 @@ RUN_STATE complete() {
 }
 
 FIRE_FIGHTING_STATE forward_default() { // default driving forward
-  static int power = 200;
+  static int power = 200; // Could potentially decrease power depending on how close to obstacle - making stopping less abrupt
   
   Ultrasound();
   IR_Sensors();
@@ -561,13 +561,20 @@ FIRE_FIGHTING_STATE extinguish() { // extinguish fire state
 
 void rotate(float angle) { // Rotates robot using PID control - MIGHT NEED TO ADJUST GAINS DEPENDING ON ANGLE
   TURNING = true;
-
+  
+  if(angle < 45) { // For small angles (i.e. when realigning to face fire after sweeping) change gains - NEEDS TO BE TUNED (if doesn't work well use rotate_small function)
+    Kp = 8;
+    Ki = 0.1;
+  }
+  
   reference = angle * (PI / 180); // convert to radians
 
   while (TURNING) {
     TurnController(); // CONTROL LOOP
   }
-
+  
+  Kp = 2;
+  Ki = 0.1;
   turningTime = 0;
   currentAngle = 0;
   accelerated = false;
