@@ -337,11 +337,11 @@ RUN_STATE detect() { // initial detection and alignment towards fire from starti
       turret_motor.writeMicroseconds(servo_val); // sets servo position
       //phototransistors();
   
-      //if(PT_sum > max_sum) { // updates the maximum values for servo and phototransistors
-       // servo_max = servo_val;
-       // max_sum = PT_sum;
-       // max_rotation_count = rotation_count;
-      //}
+      if(PT_sum > max_sum) { // updates the maximum values for servo and phototransistors
+        servo_max = servo_val;
+        max_sum = PT_sum;
+        max_rotation_count = rotation_count;
+      }
 
       count++;
       delay(250);
@@ -354,7 +354,7 @@ RUN_STATE detect() { // initial detection and alignment towards fire from starti
   }
 
   turret_motor.writeMicroseconds(1500); // reset to default
-  //rotate(120 * ((max_rotation_count - 1) % 3) + ((servo_max - 1500) / 10)); // orients robot to face fire
+  rotate(120 * ((max_rotation_count - 1) % 3) + ((servo_max - 1500) / 10)); // orients robot to face fire
 
   currentAngle = 0;
 
