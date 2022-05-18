@@ -344,7 +344,7 @@ RUN_STATE detect() { // initial detection and alignment towards fire from starti
       }
 
       count++;
-      delay(250);
+      delay(200);
     }
     currentAngle = 0;
     radiansAngle = 0;
