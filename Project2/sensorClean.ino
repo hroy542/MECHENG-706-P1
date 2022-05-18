@@ -20,12 +20,15 @@ const int LEFT_BACK_MIR = A6; //sensor is attatched on pin A6
 const int RIGHT_BACK_MIR = A7; //sensor is attatched on pin A7
 const int GYRO = A8; //Gyro is attatched on pin A8
 const int PTSensor1 = A9; //PTsensor1 is attached on pin A9
+const int PTSensor2 = A10;
+const int PTSensor3 = A12;
+const int PTSensor4 = A13;
 const int trigPin = 34;
 const int echoPin = 35;
 const int MosfetPin = 45;
 
 // Declare Variables
-int ADC_sensor[7]; //ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO, [6]PTSensor1
+int ADC_sensor[10]; //ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO, [6]PTSensor1, [7]PTSensor2, [8]PTSensor3, [9]PTSensor4 
 float callibrated_sensor[6]; //ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
 float temp = 0;
 float Ultraduration;
@@ -104,12 +107,9 @@ void setup() {
 
 
 void loop(){
-  Serial.println("Please enter the mode you want to run: Battery Raw [2], Battery Percentage [3] or Enter the Sensor pin for the Sensor you want to tune [4 - 7]?:");
-
-
-  
+  Serial.println("Please enter the mode you want to run: Battery Raw [2], Battery Percentage [3] or Enter the Sensor pin for the Sensor you want to tune [4 - 7]?:"); 
   if (wirelesscallibration == 1){
-    Mode = 12;
+    Mode = 13;
   } else {
     while (Serial.available() ==0){
     }
@@ -268,10 +268,15 @@ void loop(){
     //USE MODE 11 TO PRINT PT Sensor Signals
     case 11:
     while(1){
-      ADC_sensor[6] = analogRead(PTSensor1);
+//      ADC_sensor[6] = analogRead(PTSensor1);
+//      ADC_sensor[6] = analogRead(PTSensor2);
+//      ADC_sensor[6] = analogRead(PTSensor3);
+      ADC_sensor[ 6] = analogRead(PTSensor4);
+
 //      BluetoothSerial.print(averaged[0]);
 //      BluetoothSerial.print(", ");
-      BluetoothSerial.println(ADC_sensor[6]);
+//      BluetoothSerial.println(ADC_sensor[6]);
+      Serial.println(ADC_sensor[6]);
       delay(150);
     } 
     break;
@@ -292,6 +297,38 @@ void loop(){
 
     } 
     break;
+
+    //USE MODE 13 TO CHECK ALL 4 PT SIGNALS TOGETHER
+    case 13:
+    while(1){
+      String Delimiter = " + "; 
+      ADC_sensor[6] = analogRead(PTSensor1);
+      ADC_sensor[7] = analogRead(PTSensor2);
+      ADC_sensor[8] = analogRead(PTSensor3);
+      ADC_sensor[9] = analogRead(PTSensor4);
+      int PT_sum = ADC_sensor[6] + ADC_sensor[7] + ADC_sensor[8] + ADC_sensor[9];
+
+      Serial.print(ADC_sensor[6]);
+      Serial.print(Delimiter);
+      Serial.print(ADC_sensor[7]);
+      Serial.print(Delimiter);
+      Serial.print(ADC_sensor[7]);
+      Serial.print(Delimiter);
+      Serial.print(ADC_sensor[7]);
+      Serial.print(" = ");
+      Serial.println(PT_sum);
+      //WIRELESS PRINTING
+      BluetoothSerial.print(ADC_sensor[6]);
+      BluetoothSerial.print(Delimiter);
+      BluetoothSerial.print(ADC_sensor[7]);
+      BluetoothSerial.print(Delimiter);
+      BluetoothSerial.print(ADC_sensor[7]);
+      BluetoothSerial.print(Delimiter);
+      BluetoothSerial.print(ADC_sensor[7]);
+      BluetoothSerial.print(" = ");
+      BluetoothSerial.println(PT_sum);
+      delay(150);
+    }
   }
 }
 
