@@ -354,7 +354,7 @@ RUN_STATE detect() { // initial detection and alignment towards fire from starti
   }
 
   turret_motor.writeMicroseconds(1500); // reset to default
-  rotate(120 * ((max_rotation_count - 1) % 3) + ((servo_max - 1500) / 10)); // orients robot to face fire
+  rotate(120 * ((max_rotation_count - 1) % 3) - ((servo_max - 1500) / 10)); // orients robot to face fire
 
   currentAngle = 0;
 
