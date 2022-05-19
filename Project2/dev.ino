@@ -124,7 +124,8 @@ int strafe_back_time = 0;
 
 //----Fire Fighting----
 const int mosfetPin = 45; // mosfet pin for fan
-
+int servo_val = 0;
+int align_servo_value = 1500;
 int numFires = 0;
 bool fire_is_close = false;
 bool fanAligned = false;
@@ -263,9 +264,9 @@ STATE initialising() {
 }
 
 STATE running() {
-//  static RUN_STATE running_state = DETECT;
+// static RUN_STATE running_state = DETECT;
 
-  static RUN_STATE running_state = FIND_FIRE;
+ static RUN_STATE running_state = FIND_FIRE;
 
   //FSM
   switch (running_state) {
@@ -319,7 +320,7 @@ void enable_motors()
 
 RUN_STATE detect() { // initial detection and alignment towards fire from starting point
 
-  int servo_val = 900;
+      servo_val = 900;
   int servo_max = 0;
   int max_sum = 0;  
   int rotation_count = 1;
@@ -390,7 +391,7 @@ RUN_STATE find_fire() {
 
   if(numFires == 1 && extinguished) { // if one fire has just been extinguished - find other fire
     return DETECT;
-    Serial.print("Here");
+    //Serial.print("Here");
   }
   else if(numFires == 2) { // end when all fires detected
     return END;
@@ -407,11 +408,12 @@ RUN_STATE complete() {
 
 FIRE_FIGHTING_STATE forward_default() { // default driving forward
   static int power = 200; // Could potentially decrease power depending on how close to obstacle - making stopping less abrupt
-  
+  Serial.println("In fire fighting state");
   Ultrasound();
   IR_Sensors();
   Gyro();
 //  Sweep(); // sweep fan/phototransistor setup
+  turret_motor.writeMicroseconds(1500);
 
   forward(power); // set motor power forward
 
@@ -419,8 +421,9 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
     stop();
     delay(100);
     is_fire_close();
-    
+    Serial.println("IF STATEMENT");
     if(fire_is_close) {
+      Serial.println("FIRE IS CLOSE");
       return EXTINGUISH;
     }
     else if(IR_MID_1_DIST < IR_MID_2_DIST) { // direction of strafe depending on front IR readings
@@ -439,7 +442,7 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
   int power = 150;
   pass_start_time = millis(); // get starting time
   
-  while(millis - pass_start_time < 1500) { // drive forward until 1500ms elapsed
+  while((millis() - pass_start_time) < 1500) { // drive forward until 1500ms elapsed
     IR_Sensors();
     Ultrasound();
     Gyro();
@@ -555,10 +558,10 @@ FIRE_FIGHTING_STATE strafe_right() {
 
 FIRE_FIGHTING_STATE extinguish() { // extinguish fire state
   numFires++; // increment number of fires extinguished
-  
+  Serial.println("In fire extinguish");
   align_fan();
   put_out_fire();
-
+ Serial.println("PAST ALIGN FAN");
   extinguished = true;
   fire_is_close = false;
   return FORWARD_DEFAULT;
@@ -678,29 +681,53 @@ void is_fire_close() {
 }
 
 void align_fan() {
-  int servo_val = turret_motor.read();
+  servo_val = turret_motor.read();
+  Serial.println(servo_val);
+
+  turret_motor.writeMicroseconds(align_servo_value);
+
+  servo_val = turret_motor.read();
+  Serial.println(servo_val);
+
+  Serial.println("IN ALIGN FAN"); 
   phototransistors();
   
-  while(abs(PT2_reading - PT3_reading) < 10) { // read middle phototransistors
+  Serial.println(PT2_reading);
+  Serial.println(PT3_reading);
+  while(abs(PT2_reading - PT3_reading) > 30) { // read middle phototransistors
+    Serial.println("ALIGN FAN WHILE LOOP"); 
     if(PT2_reading > PT3_reading) { // ccw
-      servo_val += 50; // increment ccw servo position
-      turret_motor.writeMicroseconds(servo_val);
+      align_servo_value += 30; // increment ccw servo position
+      turret_motor.writeMicroseconds(align_servo_value);
     }
     else { // cw
-      servo_val -= 50; // increment cw servo position
-      turret_motor.writeMicroseconds(servo_val);
+      align_servo_value -= 30; // increment cw servo position
+      turret_motor.writeMicroseconds(align_servo_value);
     }
     BluetoothSerial.println("Align Fan");
     delay(190);//****** was 10 before
     phototransistors(); // read phototransistors
+  Serial.println(PT2_reading);
+  Serial.println(PT3_reading);
   }
+  Serial.println("LEAVING ALIGN FAN");
+  servo_val = turret_motor.read();
+  Serial.println(servo_val);
+
 }
 
 void put_out_fire() {
   // Set mosfet pin high for 10 seconds (fan)
 //CHANGED COMPLETELY
+Serial.println(servo_val);
+turret_motor.writeMicroseconds(align_servo_value);
+Serial.println("IN PUT OUT FIRE");
 phototransistors(); 
+ Serial.println(PT2_reading);
+ Serial.println(PT3_reading);
+
  while((PT2_reading >= 850)&&(PT3_reading >= 850)){
+ Serial.println("LOOP IN PUT OUT FIRE");
             digitalWrite(mosfetPin, HIGH);
             phototransistors();
         }
