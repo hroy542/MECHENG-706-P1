@@ -128,6 +128,11 @@ int strafe_back_time = 0;
 //----Fire Fighting----
 const int mosfetPin = 45; // mosfet pin for fan
 
+//########
+int servo_val = 0;
+int align_servo_val = 1500;
+//########
+
 int numFires = 0;
 bool fire_is_close = false;
 bool fanAligned = false;
@@ -702,30 +707,56 @@ void is_fire_close() {
 }
 
 void align_fan() {
-  int servo_val = turret_motor.read();
+  servo_val = turret_motor.read();
+  Serial.println(servo_val);
+
+  turret_motor.writeMicroseconds(align_servo_value);
+
+  servo_val = turret_motor.read();
+  Serial.println(servo_val);
+
+  Serial.println("IN ALIGN FAN"); 
   phototransistors();
   
-  while(abs(PT2_reading - PT3_reading) < 10) { // read middle phototransistors
+  Serial.println(PT2_reading);
+  Serial.println(PT3_reading);
+  while(abs(PT2_reading - PT3_reading) > 30) { // read middle phototransistors
+    Serial.println("ALIGN FAN WHILE LOOP"); 
     if(PT2_reading > PT3_reading) { // ccw
-      servo_val += 50; // increment ccw servo position
-      turret_motor.writeMicroseconds(servo_val);
+      align_servo_value += 30; // increment ccw servo position
+      turret_motor.writeMicroseconds(align_servo_value);
     }
     else { // cw
-      servo_val -= 50; // increment cw servo position
-      turret_motor.writeMicroseconds(servo_val);
+      align_servo_value -= 30; // increment cw servo position
+      turret_motor.writeMicroseconds(align_servo_value);
     }
-
-    delay(10);
+    BluetoothSerial.println("Align Fan");
+    delay(190);//****** was 10 before
     phototransistors(); // read phototransistors
+  Serial.println(PT2_reading);
+  Serial.println(PT3_reading);
   }
+  Serial.println("LEAVING ALIGN FAN");
+  servo_val = turret_motor.read();
+  Serial.println(servo_val);
 }
 
 void put_out_fire() {
   // Set mosfet pin high for 10 seconds (fan)
-  digitalWrite(mosfetPin, HIGH);
-  delay(10000);
-  digitalWrite(mosfetPin, LOW);
-  delay(100);
+//CHANGED COMPLETELY
+Serial.println(servo_val);
+turret_motor.writeMicroseconds(align_servo_value);
+Serial.println("IN PUT OUT FIRE");
+phototransistors(); 
+ Serial.println(PT2_reading);
+ Serial.println(PT3_reading);
+
+ while((PT2_reading >= 850)&&(PT3_reading >= 850)){
+ Serial.println("LOOP IN PUT OUT FIRE");
+            digitalWrite(mosfetPin, HIGH);
+            phototransistors();
+        }
+        digitalWrite(mosfetPin, LOW);
 }
 
 //----OPEN LOOP TURNING FUNCTIONS----
