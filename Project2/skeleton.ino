@@ -126,7 +126,7 @@ int strafe_back_time = 0;
 const int mosfetPin = 45; // mosfet pin for fan
 
 int servo_val = 0;
-int align_servo_value = 1500;
+int align_servo_val = 1500;
 
 int numFires = 0;
 bool fire_is_close = false;
