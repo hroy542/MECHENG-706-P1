@@ -11,7 +11,6 @@ enum STATE {
 //State machine states when RUNNING
 enum RUN_STATE {
   DETECT,
-  REPOSITION,
   FIND_FIRE,
   END,
 };
@@ -101,8 +100,8 @@ enum PT { // might not need
 
 const int PT1_pin = A9;
 const int PT2_pin = A10;
-const int PT3_pin = A11;
-const int PT4_pin = A12;
+const int PT3_pin = A12;
+const int PT4_pin = A13;
 
 int PT1_reading = 0;
 int PT2_reading = 0;
@@ -110,9 +109,7 @@ int PT3_reading = 0;
 int PT4_reading = 0;
 int PT_sum = 0;
 
-int repos_time = 0; // time for robot to drive forward to reposition
-const int min_detect_threshold = 0; // minimum value to know if fire is present - SUBJECT TO CHANGE 
-const int detection_threshold = 2000; // when close to fire - SUBJECT TO CHANGE
+const int detection_threshold = 2000; // SUBJECT TO CHANGE
 //----Phototransistor----
 
 //----Obstacle Avoidance----
@@ -127,11 +124,6 @@ int strafe_back_time = 0;
 
 //----Fire Fighting----
 const int mosfetPin = 45; // mosfet pin for fan
-
-//########
-int servo_val = 0;
-int align_servo_val = 1500;
-//########
 
 int numFires = 0;
 bool fire_is_close = false;
@@ -273,13 +265,12 @@ STATE initialising() {
 STATE running() {
   static RUN_STATE running_state = DETECT;
 
+//  static RUN_STATE running_state = FIND_FIRE;
+
   //FSM
   switch (running_state) {
     case DETECT:
       running_state = detect();
-      break;
-    case REPOSITION: // if no fire detected in DETECT, reposition robot
-      running_state = reposition();
       break;
     case FIND_FIRE:
       running_state = find_fire();
@@ -346,9 +337,10 @@ RUN_STATE detect() { // initial detection and alignment towards fire from starti
       }
       
       turret_motor.writeMicroseconds(servo_val); // sets servo position
-      //phototransistors();
+      phototransistors();
   
       if(PT_sum > max_sum) { // updates the maximum values for servo and phototransistors
+        BluetoothSerial.println("Sum Updated");
         servo_max = servo_val;
         max_sum = PT_sum;
         max_rotation_count = rotation_count;
@@ -363,49 +355,20 @@ RUN_STATE detect() { // initial detection and alignment towards fire from starti
     count = 0;
     rotation_count++;
   }
-  
-//  if(max_sum < min_detect_threshold) { // if no fire detected 
-//    repos_time = millis();
-//    return REPOSITION;
-//  }
-//  else {
-    turret_motor.writeMicroseconds(1500); // reset to default
-    rotate(120 * ((max_rotation_count - 1) % 3) - ((servo_max - 1500) / 10)); // orients robot to face fire
 
-    currentAngle = 0;
+  turret_motor.writeMicroseconds(1500); // reset to default
+  rotate(120 * ((max_rotation_count - 1) % 3) - ((servo_max - 1500) / 10)); // orients robot to face fire
 
-    return FIND_FIRE;
-  //}
-}
+  currentAngle = 0;
 
-RUN_STATE reposition() {
-  static int power = 200; // Could potentially decrease power depending on how close to obstacle - making stopping less abrupt
-  
-  Ultrasound();
-  IR_Sensors();
-  Gyro();
-
-  forward(power); // set motor power forward
-
-  if(Ultradistance < 20 || IR_MID_1_DIST < 20 || IR_MID_2_DIST < 20) { // if obstacle reached - could slow down to a stop 20cm away
-    stop();
-    delay(100);
-    return DETECT;
-  }
-  else if(millis() - repos_time < 3000) {
-    return REPOSITION; // keep going forward
-  }
-  else {
-    stop();
-    delay(100);
-    return DETECT;
-  }
+  return FIND_FIRE;
+//  return END;
 }
 
 
 RUN_STATE find_fire() {
   static FIRE_FIGHTING_STATE state = FORWARD_DEFAULT;
-  
+
   //FSM for fire fighting
   switch(state) {
     case FORWARD_DEFAULT:
@@ -427,6 +390,7 @@ RUN_STATE find_fire() {
 
   if(numFires == 1 && extinguished) { // if one fire has just been extinguished - find other fire
     return DETECT;
+    Serial.print("Here");
   }
   else if(numFires == 2) { // end when all fires detected
     return END;
@@ -447,7 +411,7 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
   Ultrasound();
   IR_Sensors();
   Gyro();
-  Sweep(); // sweep fan/phototransistor setup
+//  Sweep(); // sweep fan/phototransistor setup
 
   forward(power); // set motor power forward
 
@@ -687,72 +651,56 @@ void Sweep() {
 }
 
 void is_fire_close() {
+  BluetoothSerial.println("HERE");
   int prev_pos = turret_motor.read(); // read where servo is currently
   int servo_val = 900;
   turret_motor.writeMicroseconds(servo_val); // reposition to centre - SHOULD PROBABLY DO A FULL SWEEP
   phototransistors();
 
   while(servo_val < 2100) { // sweep servo to see if fire is close
-    
+    phototransistors();//*****
+      BluetoothSerial.println("LOOP");
+
     if(PT_sum > detection_threshold) { // if greater than threshold - i.e. in range - return
       fire_is_close = true;
+      BluetoothSerial.println("IFstatement");
+
       return;
     }
 
     servo_val += 100;
-    delay(10);
+    turret_motor.writeMicroseconds(servo_val); // reposition to centre - SHOULD PROBABLY DO A FULL SWEEP
+
+    delay(200);
   }
   
   turret_motor.writeMicroseconds(prev_pos); // set turret position to what is was before entering function
 }
 
 void align_fan() {
-  servo_val = turret_motor.read();
-  Serial.println(servo_val);
-
-  turret_motor.writeMicroseconds(align_servo_val);
-
-  servo_val = turret_motor.read();
-  Serial.println(servo_val);
-
-  BluetoothSerial.println("IN ALIGN FAN"); 
+  int servo_val = turret_motor.read();
   phototransistors();
   
-  BluetoothSerial.println(PT2_reading);
-  BluetoothSerial.println(PT3_reading);
-  while(abs(PT2_reading - PT3_reading) > 40) { // read middle phototransistors
-    Serial.println("ALIGN FAN WHILE LOOP"); 
+  while(abs(PT2_reading - PT3_reading) < 10) { // read middle phototransistors
     if(PT2_reading > PT3_reading) { // ccw
-      align_servo_val += 20; // increment ccw servo position
-      turret_motor.writeMicroseconds(align_servo_val);
+      servo_val += 50; // increment ccw servo position
+      turret_motor.writeMicroseconds(servo_val);
     }
     else { // cw
-      align_servo_val -= 20; // increment cw servo position
-      turret_motor.writeMicroseconds(align_servo_val);
+      servo_val -= 50; // increment cw servo position
+      turret_motor.writeMicroseconds(servo_val);
     }
-    BluetoothSerial.println("Align Fan Loop");
+    BluetoothSerial.println("Align Fan");
     delay(190);//****** was 10 before
     phototransistors(); // read phototransistors
-  BluetoothSerial.println(PT2_reading);
-  BluetoothSerial.println(PT3_reading);
   }
-  Serial.println("LEAVING ALIGN FAN");
-  servo_val = turret_motor.read();
-  Serial.println(servo_val);
 }
 
 void put_out_fire() {
   // Set mosfet pin high for 10 seconds (fan)
 //CHANGED COMPLETELY
-Serial.println(servo_val);
-turret_motor.writeMicroseconds(align_servo_val);
-Serial.println("IN PUT OUT FIRE");
 phototransistors(); 
- Serial.println(PT2_reading);
- Serial.println(PT3_reading);
-
- while((PT2_reading >= 300)&&(PT3_reading >= 300)){
- Serial.println("LOOP IN PUT OUT FIRE");
+ while((PT2_reading >= 850)&&(PT3_reading >= 850)){
             digitalWrite(mosfetPin, HIGH);
             phototransistors();
         }
