@@ -475,7 +475,7 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
   int power = 150;
   pass_start_time = millis(); // get starting time
   
-  while(millis - pass_start_time < 1500) { // drive forward until 1500ms elapsed
+  while((millis() - pass_start_time) < 1500) { // drive forward until 1500ms elapsed
     IR_Sensors();
     Ultrasound();
     Gyro();
@@ -710,7 +710,7 @@ void align_fan() {
   servo_val = turret_motor.read();
   Serial.println(servo_val);
 
-  turret_motor.writeMicroseconds(align_servo_value);
+  turret_motor.writeMicroseconds(align_servo_val);
 
   servo_val = turret_motor.read();
   Serial.println(servo_val);
@@ -723,12 +723,12 @@ void align_fan() {
   while(abs(PT2_reading - PT3_reading) > 30) { // read middle phototransistors
     Serial.println("ALIGN FAN WHILE LOOP"); 
     if(PT2_reading > PT3_reading) { // ccw
-      align_servo_value += 30; // increment ccw servo position
-      turret_motor.writeMicroseconds(align_servo_value);
+      align_servo_val += 30; // increment ccw servo position
+      turret_motor.writeMicroseconds(align_servo_val);
     }
     else { // cw
-      align_servo_value -= 30; // increment cw servo position
-      turret_motor.writeMicroseconds(align_servo_value);
+      align_servo_val -= 30; // increment cw servo position
+      turret_motor.writeMicroseconds(align_servo_val);
     }
     BluetoothSerial.println("Align Fan");
     delay(190);//****** was 10 before
@@ -745,7 +745,7 @@ void put_out_fire() {
   // Set mosfet pin high for 10 seconds (fan)
 //CHANGED COMPLETELY
 Serial.println(servo_val);
-turret_motor.writeMicroseconds(align_servo_value);
+turret_motor.writeMicroseconds(align_servo_val);
 Serial.println("IN PUT OUT FIRE");
 phototransistors(); 
  Serial.println(PT2_reading);
