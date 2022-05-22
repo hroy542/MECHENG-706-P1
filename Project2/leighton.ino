@@ -108,7 +108,19 @@ int PT1_reading = 0;
 int PT2_reading = 0;
 int PT3_reading = 0;
 int PT4_reading = 0;
+int PT_left = 0;
+int PT_right = 0;
+
+int PT_diff = 0;
+float PT_ratio = 0;
 int PT_sum = 0;
+
+// TO REPLACE CURRENT SWEEP AND ALIGNMENT FUNCTION - TAKES PT READINGS AND APPLIES CLOSED LOOP CONTROL TO FACE FIRE
+float PT_error = 0; // error between left and right
+float Kp_PT = 1;
+float Ki_PT = 0.1;
+float Kd_PT = 0.1;
+float PT_correction = 0;
 
 int repos_time = 0; // time for robot to drive forward to reposition
 const int min_detect_threshold = 0; // minimum value to know if fire is present - SUBJECT TO CHANGE 
@@ -652,19 +664,19 @@ void rotate_small(float angle) { // P Control rotate function for small angles
   return;
 }
 
-void Sweep() {
+void Sweep() { // could also implement closed loop PI control by looking at error between left and right phototransistors
   static int servo_val = 1500;
-  static int max_servo_val = 0;
-  static int max_PT_sum = 0;
+  static int aligned_servo_val = 0;
+  static float min_PT_ratio = 999;
   static bool CCW = true;
-  static int ccw_val = 2100;
-  static int cw_val = 900;
-  //phototransistors();
+  static int ccw_val = 1800;
+  static int cw_val = 1200;
+  phototransistors();
 
-  //if(PT_sum > max_PT_sum) { // if phototransistors sum higher, update max position and value
-    //max_PT_sum = PT_sum;
-    //max_servo_val = servo_val; 
-  //}
+  if(abs(1 - PT_ratio) < min_PT_ratio) { // if phototransistors ratio lower, update min ratio and servo value
+    min_PT_ratio = abs(1 - PT_ratio);
+    aligned_servo_val = servo_val; 
+  }
 
   if(CCW) { // sweep ccw
     servo_val += 100;
@@ -677,13 +689,13 @@ void Sweep() {
     if(servo_val == cw_val) {
       CCW = true;
       stop();
-      //rotate((max_servo_val - 1500) / 10); // reorient towards fire - MOST LIKELY NEED TO ADJUST GAINS (ANGLE TOO SMALL)
+      rotate((aligned_servo_val - 1500) / 10); // reorient towards fire - MOST LIKELY NEED TO ADJUST GAINS (ANGLE TOO SMALL)
       servo_val = 1500; // reset servo position
     }
   }
   
   turret_motor.writeMicroseconds(servo_val); // set turret angle
-  delay(50);
+  delay(50); // might need to use sampling
 }
 
 void is_fire_close() {
@@ -1055,7 +1067,12 @@ void phototransistors() {
   PT2_reading = analogRead(PT2_pin); // left-middle
   PT3_reading = analogRead(PT3_pin); // right-middle
   PT4_reading = analogRead(PT4_pin); // right-most
+  
+  PT_left = PT1_reading + PT2_reading;
+  PT_right = PT3_reading + PT4_reading;
 
+  PT_diff = PT_left - PT_right;
+  PT_ratio = PT_left / PT_right;
   PT_sum = PT1_reading + PT2_reading + PT3_reading + PT4_reading; // gets sum of all 4 phototransistors
 }
 //----WRITTEN HELPER FUNCTIONS----
