@@ -91,6 +91,12 @@ float process_noise = 5;
 float sensor_noise = 6;    // Change the value of sensor noise to get different KF performance
 //----IR Kalman Filter----
 
+//----Boolean variables for which sensor detects obstacle----
+bool left_IR_close = false; 
+bool right_IR_close = false;
+bool ultrasonic_close = false;
+//----Boolean variables for which sensor detects obstacle----
+
 //----Phototransistor----
 enum PT { // might not need
   PT1, // left most
@@ -465,6 +471,22 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
   forward(power); // set motor power forward
 
   if(Ultradistance < 20 || IR_MID_1_DIST < 18 || IR_MID_2_DIST < 18) { // if obstacle reached - could slow down to a stop 20cm away
+
+    if(Ultradistance + IR_MID_1_DIST + IR_MID_2_DIST < 80) { // if at a wall - DEFINITELY A MORE SOPHISTICATED WAY TO DO THIS
+      rotate(180);
+      return FORWARD_DEFAULT;
+    }
+    
+    if(Ultradistance < 20) {
+      ultrasonic_close = true;
+    }
+    else if(IR_MID_1_DIST < 18) {
+      left_IR_close = true;
+    }
+    else {
+      right_IR_close = true;
+    }
+    
     stop();
     delay(100);
     is_fire_close();
@@ -472,11 +494,22 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
     if(fire_is_close) {
       return EXTINGUISH;
     }
-    else if(IR_MID_1_DIST < IR_MID_2_DIST) { // direction of strafe depending on front IR readings
+    else if(left_IR_close) { // direction of strafe depending on front IR readings
+      left_IR_close = false;
       return STRAFE_RIGHT;
     }
-    else {
+    else if(right_IR_close) {
+      right_IR_close = false;
       return STRAFE_LEFT;
+    }
+    else { // ultrasonic used to stop
+      ultrasonic_close = false;
+      if(IR_LONG_1_DIST > IR_LONG_2_DIST) { // strafe left if more space on left side
+        return STRAFE_LEFT;
+      }
+      else {
+        return STRAFE_RIGHT;
+      }
     }
   }
   else {
@@ -495,7 +528,13 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
 
     forward(power); // drive forward
 
-    if(Ultradistance < 20 || IR_MID_1_DIST < 20 || IR_MID_2_DIST < 20) { // if obstacle detected
+    if(Ultradistance < 20 || IR_MID_1_DIST < 18 || IR_MID_2_DIST < 18) { // if obstacle detected
+
+      if(Ultradistance + IR_MID_1_DIST + IR_MID_2_DIST < 80) { // if at a wall - DEFINITELY A MORE SOPHISTICATED WAY TO DO THIS
+        rotate(180);
+        return FORWARD_DEFAULT;
+      }
+      
       stop();
       delay(100);
       phototransistors();
