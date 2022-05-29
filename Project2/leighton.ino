@@ -615,7 +615,7 @@ FIRE_FIGHTING_STATE strafe_left() {
     }
   }
   else {
-    if(millis() - strafe_left_time > 300) { // continue strafing left for 300ms (needs to be tweaked) once obstacle passed - to ensure cleared
+    if(millis() - strafe_left_time > 500) { // continue strafing left for 300ms (needs to be tweaked) once obstacle passed - to ensure cleared
       strafed_left = true;
       stop();
       return FORWARD_PASS;
@@ -654,7 +654,7 @@ FIRE_FIGHTING_STATE strafe_right() {
     }
   }
   else {
-    if(millis() - strafe_right_time > 300) { // continue strafing left for 300ms once obstacle passed - to ensure cleared
+    if(millis() - strafe_right_time > 500) { // continue strafing left for 300ms once obstacle passed - to ensure cleared
       strafed_right = true;
       stop();
       return FORWARD_PASS;
