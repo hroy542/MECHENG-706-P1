@@ -407,7 +407,7 @@ RUN_STATE reposition() {
   IR_Sensors();
   Gyro();
 
-  forward(power); // set motor power forward
+  forward_straight(power); // set motor power forward
 
   // Sweep servo for full range and read PTs
   Sweep_repos();
@@ -417,6 +417,7 @@ RUN_STATE reposition() {
     stop();
     delay(100);
     return DETECT; // COULD MAYBE RETURN FORWARD_DEFAULT BASED ON HOW EFECTIVE IT IS AT ALIGNING TOWARDS FIRE
+    // return FORWARD_DEFAULT;
   }
   else if(Ultradistance < 10 || IR_MID_1_DIST < 10 || IR_MID_2_DIST < 10) { // if obstacle reached - could slow down to a stop 20cm away
     stop();
@@ -480,10 +481,10 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
   Ultrasound();
   IR_Sensors();
   Gyro();
-  Update(); // alignment to fire using PTs and applying gain
-  //Sweep(); // alignment to fire using servo and rotating after each sweep
+  Update(); // alignment to fire using PTs and applying gain - TEST
+  //Sweep(); // alignment to fire using servo and rotating after each sweep - TEST
 
-  forward(power); // set motor power forward
+  forward_towards_fire(power); // set motor power forward
 
   // SIDE OBSTACLE DETECTION - MIGHT SWITCH TO MID RANGE IRS
   if(IR_LONG_1_DIST < 11) {
@@ -562,7 +563,7 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
     Ultrasound();
     Gyro();
 
-    forward(power); // drive forward
+    forward_straight(power); // drive forward
 
     if(Ultradistance < 10 || IR_MID_1_DIST < 10 || IR_MID_2_DIST < 10) { // if obstacle detected
 
