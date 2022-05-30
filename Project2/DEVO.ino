@@ -360,18 +360,10 @@ RUN_STATE detect() { // initial detection and alignment towards fire from starti
   open_rotate(150);
   phototransistors();
   temp_sum = PT_sum;
-  Serial.println("Entering Detect");
-  Serial.println("Max sum");
-  Serial.println(temp_sum);
   while (temp_sum > (max_sum - 50)){
       max_sum = temp_sum;
-      Serial.println("Max Sum");
-      Serial.println(max_sum);
       phototransistors();
       temp_sum = PT_sum;
-      Serial.println("Temp Sum");
-      Serial.println(temp_sum);
-      Serial.println("Detect Loop");
   }
 
   open_rotate(0);
