@@ -480,7 +480,7 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
   
   Ultrasound();
   IR_Sensors();
-  Gyro();
+  //Gyro(); // dont need gyro if using Update()
   Update(); // alignment to fire using PTs and applying gain - TEST
   //Sweep(); // alignment to fire using servo and rotating after each sweep - TEST
 
