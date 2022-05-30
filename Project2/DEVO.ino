@@ -359,14 +359,20 @@ RUN_STATE detect() { // initial detection and alignment towards fire from starti
   ////-------FINN'S NEW STUFF-------
   open_rotate(150);
   phototransistors();
-  temp_sum = PT_sum;
-  while (temp_sum > (max_sum - 50)){
-      max_sum = temp_sum;
-      phototransistors();
-      temp_sum = PT_sum;
-  }
+//   temp_sum = PT_sum;
+//   while (temp_sum > (max_sum - 50)){
+//       max_sum = temp_sum;
+//       phototransistors();
+//       temp_sum = PT_sum;
+//   }
 
-  open_rotate(0);
+//   open_rotate(0);
+  max_sum = (PT_sum > max_sum)? PT_sum : max_sum;
+  while (PT_sum > (max_sum - 50)){
+      phototransistors();
+      max_sum = (PT_sum > max_sum)? PT_sum : max_sum;
+  }
+  stop();
   out_of_detect = true;
   Serial.println("Leaving Detect");
   return FIND_FIRE;
