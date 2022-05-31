@@ -19,6 +19,7 @@ enum RUN_STATE {
 enum FIRE_FIGHTING_STATE {
   FORWARD_DEFAULT,
   FORWARD_PASS,
+  REALIGN,
   STRAFE_LEFT,
   STRAFE_RIGHT,
   EXTINGUISH,
@@ -105,12 +106,12 @@ int PT1_reading = 0;
 int PT2_reading = 0;
 int PT3_reading = 0;
 int PT4_reading = 0;
-int PT_left = 0;
-int PT_right = 0;
+float PT_left = 0;
+float PT_right = 0;
 
 int PT_diff = 0;
 float PT_ratio = 0;
-int PT_sum = 0;
+float PT_sum = 0;
 
 float Kp_align = 100;
 float PT_correction = 0;
@@ -335,68 +336,64 @@ void enable_motors()
 }
 
 RUN_STATE detect() { // initial detection and alignment towards fire from starting point
-
-  int servo_val = 900;
-  int servo_max = 0;
-  int max_sum = 0;  
-  int rotation_count = 1;
-  int max_rotation_count = 1;
+  
+  int power = 200;
   int count = 0;
-  int rotation_back = 0;
-  int minimum = 100; // MINIMUM VALUE THAT WE CAN COMFORTABLY SAY IS FACING FIRE AND IS NOT TOO FAR - SUBJECT TO CHANGE
+  bool CCW = false;                                                                                                                                                                                                         
 
-  while(rotation_count <= 3) { // for 3 robot orientations
-    while(count < 15) { // full range rotation - 20 servo positions
-      
-      if(rotation_count % 2 == 1) {
-        servo_val += (1200 / 15); // 600 is range from centre, 10 is number of increments
-      }
-      else {
-        servo_val -= (1200 / 15);
-      }
-      
-      turret_motor.writeMicroseconds(servo_val); // sets servo position
-      phototransistors();
-  
-      if(PT_sum > max_sum) { // updates the maximum values for servo and phototransistors
-        servo_max = servo_val;
-        max_sum = PT_sum;
-        max_rotation_count = rotation_count;
-      }
+  turret_motor.writeMicroseconds(1450);
 
-      count++;
-      delay(200);
-    }
-    
-    // IF WE KNOW FIRE HAS BEEN DETECTED AND IS FAIRLY CLOSE - BREAK LOOP AND SAVE TIME
-    if(max_sum > minimum) {
-      break;
-    }
-    currentAngle = 0;
-    radiansAngle = 0;
-    rotate(120); // rotate robot 120 degrees
-    count = 0;
-    rotation_count++;
-  }
-  
-  if(max_sum <= min_detect_threshold) { // if no fire detected 
-    repos_time = millis();
-    return REPOSITION;
+  while(count < 100) {
+    phototransistors();
+    PT_left += PT_left;
+    PT_right += PT_right;
+    count++;
+    delay(5);
+  }  
+
+  PT_left = PT_left / 100;
+  PT_right = PT_right / 100;
+
+  if(PT_left > PT_right) {
+    CCW = true;
+    ccw(power);
   }
   else {
-    turret_motor.writeMicroseconds(1500); // reset to default
-    
-    rotation_back = 120 * ((max_rotation_count - 1) % 3) - ((servo_max - 1500) / 10);
-    if(rotation_back > 180) {
-      rotation_back = rotation_back - 360;
+    CCW = false;
+    cw(power);
+  }
+
+  while(1) {
+    phototransistors();
+
+    if(PT_ratio < 1) { // right > left
+      PT_ratio = 1.0 / PT_ratio;
     }
     
-    rotate(rotation_back); // orients robot to face fire
-    currentAngle = 0; // reset current angle for gyro
+    if(PT_sum > 80 && PT_ratio < 1.1) {
+      stop();
+      break;
+    }
+    else {
+      if(PT_ratio < 1.8) { // slow motors as approaches
+        power = 200 * (PT_ratio / 2.5);
+      }
+      else {
+        power = 200;
+      }
 
-    out_of_detect = true;
-    return FIND_FIRE;
+      if(CCW) {
+        ccw(power);
+      }
+      else {
+        cw(power);
+      }
+    }
+
+    delay(5);
   }
+
+  return FIND_FIRE;
 }
 
 RUN_STATE reposition() {
@@ -433,11 +430,6 @@ RUN_STATE reposition() {
 
 RUN_STATE find_fire() {
   static FIRE_FIGHTING_STATE state = FORWARD_DEFAULT;
-
-  if(out_of_detect) { // if just came out of detect state
-    align_robot(); // align robot towards fire
-    out_of_detect = false;
-  }
   
   //FSM for fire fighting
   switch(state) {
@@ -446,6 +438,9 @@ RUN_STATE find_fire() {
       break;
     case FORWARD_PASS:
       state = forward_pass();
+      break;
+    case REALIGN:
+      state = realign();
       break;
     case STRAFE_LEFT:
       state = strafe_left();
@@ -487,19 +482,22 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
   forward_towards_fire(power); // set motor power forward
 
   // SIDE OBSTACLE DETECTION - MIGHT SWITCH TO MID RANGE IRS
-  if(IR_LONG_1_DIST < 11) {
-    rotate(20);
-    return FORWARD_DEFAULT;
-  }
-  else if(IR_LONG_2_DIST < 11) {
-    rotate(-20);
-    return FORWARD_DEFAULT;
-  }
+//  if(IR_LONG_1_DIST <= 10) {
+//    stop();
+//    rotate(20);
+//    return FORWARD_DEFAULT;
+//  }
+//  else if(IR_LONG_2_DIST <= 10) {
+//    stop();
+//    rotate(-20);
+//    return FORWARD_DEFAULT;
+//  }
 
   // FRONT OBSTACLE DETECTION
   if(Ultradistance < 10 || IR_MID_1_DIST < 10 || IR_MID_2_DIST < 10) {
 
     if(Ultradistance + IR_MID_1_DIST + IR_MID_2_DIST < 45) { // if at a wall - DEFINITELY A MORE SOPHISTICATED WAY TO DO THIS
+      stop();
       rotate(180);
       return FORWARD_DEFAULT;
     }
@@ -568,6 +566,7 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
     if(Ultradistance < 10 || IR_MID_1_DIST < 10 || IR_MID_2_DIST < 10) { // if obstacle detected
 
       if(Ultradistance + IR_MID_1_DIST + IR_MID_2_DIST < 45) { // if at a wall - DEFINITELY A MORE SOPHISTICATED WAY TO DO THIS
+        stop();
         rotate(180);
         return FORWARD_DEFAULT;
       }
@@ -601,6 +600,72 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
   }
 
   //return FORWARD_DEFAULT;
+}
+
+FIRE_FIGHTING_STATE realign() {
+  int power = 150;
+  int count = 0;
+  bool CCW = false;  
+  turret_motor.writeMicroseconds(1450);
+  
+  if(strafed_left) {                                                                                                                                                                                                
+    cw(power);
+
+    while(1) {
+      phototransistors();
+  
+      if(PT_ratio < 1) { // right > left
+        PT_ratio = 1.0 / PT_ratio;
+      }
+      
+      if(PT_sum > 80 && PT_ratio < 1.1) {
+        stop();
+        break;
+      }
+      else {
+        if(PT_ratio < 1.8) { // slow motors as approaches
+          power = 150 * (PT_ratio / 2);
+        }
+        else {
+          power = 150;
+        }
+        
+        cw(power);
+      }
+  
+      delay(5);
+    }
+  }
+  else if(strafed_right) {
+    ccw(power);
+
+    while(1) {
+      phototransistors();
+  
+      if(PT_ratio < 1) { // right > left
+        PT_ratio = 1.0 / PT_ratio;
+      }
+      
+      if(PT_sum > 80 && PT_ratio < 1.1) {
+        stop();
+        break;
+      }
+      else {
+        if(PT_ratio < 1.8) { // slow motors as approaches
+          power = 150 * (PT_ratio / 2);
+        }
+        else {
+          power = 150;
+        }
+        
+        cw(power);
+      }
+  
+      delay(5);
+    }
+  }
+
+  return FORWARD_DEFAULT;
 }
 
 FIRE_FIGHTING_STATE strafe_left() {
@@ -695,9 +760,9 @@ FIRE_FIGHTING_STATE extinguish() { // extinguish fire state
 void rotate(float angle) { // Rotates robot using PID control - MIGHT NEED TO ADJUST GAINS DEPENDING ON ANGLE - TEST IF CCW IS +VE or -VE
   TURNING = true;
   
-  if(angle < 45) { // For small angles (i.e. when realigning to face fire after sweeping) change gains - NEEDS TO BE TUNED (if doesn't work well use rotate_small function)
-    Kp = 8;
-    Ki = 0.1;
+  if(angle < 50) { // For small angles (i.e. when realigning to face fire after sweeping) change gains - NEEDS TO BE TUNED (if doesn't work well use rotate_small function)
+    Kp = 1.8 / (angle / 50);
+    Ki = 0.1 * (angle / 50);
   }
   
   reference = angle * (PI / 180); // convert to radians
@@ -709,7 +774,7 @@ void rotate(float angle) { // Rotates robot using PID control - MIGHT NEED TO AD
     TurnController(); // CONTROL LOOP
   }
   
-  Kp = 2;
+  Kp = 1.8;
   Ki = 0.1;
   turningTime = 0;
   currentAngle = 0;
@@ -758,6 +823,13 @@ void Update() { // FIRE ALIGNMENT IMPLEMENTATION 1
   }
   else {
     PT_correction = -Kp_align * (PT_ratio - 1);
+  }
+
+  if(PT_correction > 100) { // constrain to within 100
+    PT_correction = 100;
+  }
+  else if(PT_correction < -100) {
+    PT_correction = -100;
   }
 }
 
@@ -874,7 +946,7 @@ void align_robot() { // aligns robot to fire using PTs
   turret_motor.writeMicroseconds(aligned_servo_val);
   phototransistors();
 
-  while(abs(PT_left - PT_right) > 30) { // read middle phototransistors
+  while(abs(PT_left - PT_right) > 10) { // read middle phototransistors
     if(PT_left > PT_right) { // ccw
       ccw(69);
     }
@@ -1199,7 +1271,7 @@ float Kalman(float rawdata, float prev_est, float last_variance, IR code) {
   return a_post_est;
 }
 
-void phototransistors() {
+void phototransistors() { // gets data from phototransistors
   PT1_reading = analogRead(PT1_pin); // left-most
   PT2_reading = analogRead(PT2_pin); // left-middle
   PT3_reading = analogRead(PT3_pin); // right-middle
@@ -1207,6 +1279,13 @@ void phototransistors() {
   
   PT_left = PT1_reading + PT2_reading;
   PT_right = PT3_reading + PT4_reading;
+
+  if(PT_left < 100) {
+    PT_left = PT_left * 1.15;
+  }
+  else {
+    PT_left = PT_left * 1.07;
+  }
 
   PT_diff = PT_left - PT_right;
   PT_ratio = PT_left / PT_right;
