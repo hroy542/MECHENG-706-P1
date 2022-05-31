@@ -616,7 +616,7 @@ FIRE_FIGHTING_STATE strafe_left() {
     return STRAFE_RIGHT;
   }
 
-  if(IR_MID_2_DIST < 30) { // keep strafing if obstacle in the way
+  if(IR_MID_2_DIST < 20) { // keep strafing if obstacle in the way
     strafe_left_time = millis(); // update time until obstacle passed
     return STRAFE_LEFT;
   }
@@ -655,7 +655,7 @@ FIRE_FIGHTING_STATE strafe_right() {
     return STRAFE_LEFT;
   }
 
-  if(IR_MID_1_DIST < 30) { // keep strafing if obstacle in the way
+  if(IR_MID_1_DIST < 20) { // keep strafing if obstacle in the way
     strafe_right_time = millis(); // update time until obstacle passed
     return STRAFE_RIGHT;
   }
@@ -701,6 +701,9 @@ void rotate(float angle) { // Rotates robot using PID control - MIGHT NEED TO AD
   }
   
   reference = angle * (PI / 180); // convert to radians
+  
+  currentAngle = 0;
+  radiansAngle = 0;
 
   while (TURNING) {
     TurnController(); // CONTROL LOOP
@@ -710,6 +713,7 @@ void rotate(float angle) { // Rotates robot using PID control - MIGHT NEED TO AD
   Ki = 0.1;
   turningTime = 0;
   currentAngle = 0;
+  radiansAngle = 0;
   accelerated = false;
 
   stop(); // stop motors
@@ -959,7 +963,6 @@ void TurnController() { // controller for turning
   // exit condition
   if (abs(error < 0.15)) { // turning exit condition
     TURNING = false;
-    currentAngle = 0;
     return;
   }
 
