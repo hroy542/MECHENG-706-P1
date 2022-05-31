@@ -127,7 +127,7 @@ float Kp_align = 100;
 float PT_correction = 0;
 
 int repos_time = 0; // time for robot to drive forward to reposition
-const int min_detect_threshold = 0; // minimum value to know if fire is present - SUBJECT TO CHANGE 
+const int min_detect_threshold = 60; // minimum value to know if fire is present - SUBJECT TO CHANGE 
 const int detection_threshold = 2000; // SUBJECT TO CHANGE
 //----Phototransistor----
 
@@ -288,8 +288,6 @@ STATE initialising() {
 STATE running() {
   static RUN_STATE running_state = DETECT;
 
-//  static RUN_STATE running_state = FIND_FIRE;
-
   //FSM
   switch (running_state) {
     case DETECT:
@@ -395,8 +393,6 @@ RUN_STATE detect() { // initial detection and alignment towards fire from starti
   }
   else {
     turret_motor.writeMicroseconds(1500); // reset to default
-//     rotate(120 * ((max_rotation_count - 1) % 3) - ((servo_max - 1500) / 10)); // orients robot to face fire
-//     currentAngle = 0;
     
     rotation_back = 120 * ((max_rotation_count - 1) % 3) - ((servo_max - 1500) / 10);
     if(rotation_back > 180) {
@@ -404,6 +400,8 @@ RUN_STATE detect() { // initial detection and alignment towards fire from starti
     }
 
     rotate(rotation_back); // orients robot to face fire
+    
+    radiansAngle = 0;
     currentAngle = 0; // reset current angle for gyro
     
     out_of_detect = true;
@@ -419,7 +417,7 @@ RUN_STATE reposition() {
   IR_Sensors();
   Gyro();
 
-  forward(power); // set motor power forward
+  forward_straight(power); // set motor power forward
 
   // Sweep servo for full range and read PTs
   Sweep_repos();
@@ -491,13 +489,13 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
   
   Ultrasound();
   IR_Sensors();
-  Gyro();
-  Update(); // alignment to fire using PTs and applying gain
+  //Gyro(); // dont need gyro if using Update()
+  Update(); // alignment to fire using PTs and applying gain - TEST
 
  // bluetoothcall(-1, -1, -1, -1, Ultradistance, IR_MID_1_DIST, IR_MID_2_DIST);
-  Sweep();  // alignment to fire using servo and rotating after each sweep
+  //Sweep();  // alignment to fire using servo and rotating after each sweep - TEST
 
-  forward(power); // set motor power forward
+  forward_towards_fire(power); // set motor power forward
 
   // SIDE OBSTACLE DETECTION - MIGHT SWITCH TO MID RANGE IRS
   if(IR_LONG_1_DIST < 11) {
@@ -576,9 +574,9 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
     IR_Sensors();
     Ultrasound();
     Gyro();
-    bluetoothcall(-1, -1, -1, -1, Ultradistance, IR_MID_1_DIST, IR_MID_2_DIST);
+    //bluetoothcall(-1, -1, -1, -1, Ultradistance, IR_MID_1_DIST, IR_MID_2_DIST);
 
-    forward(power); // drive forward
+    forward_straight(power); // drive forward
 
     if(Ultradistance < 10 || IR_MID_1_DIST < 10 || IR_MID_2_DIST < 10) { // if obstacle detected
 
@@ -623,7 +621,7 @@ FIRE_FIGHTING_STATE strafe_left() {
   Gyro();
 
   strafe(power); // left strafe
-  bluetoothcall(-1, -1, -1, -1, Ultradistance, IR_MID_1_DIST, IR_MID_2_DIST);
+  //bluetoothcall(-1, -1, -1, -1, Ultradistance, IR_MID_1_DIST, IR_MID_2_DIST);
 
   if(IR_LONG_1_DIST < 15) { // if left side IR detects obstacle strafe other way to avoid obstacle
     stop();
@@ -631,7 +629,7 @@ FIRE_FIGHTING_STATE strafe_left() {
     return STRAFE_RIGHT;
   }
 
-  if(IR_MID_2_DIST < 30) { // keep strafing if obstacle in the way
+  if(IR_MID_2_DIST < 20) { // keep strafing if obstacle in the way
     strafe_left_time = millis(); // update time until obstacle passed
     return STRAFE_LEFT;
   }
@@ -661,7 +659,7 @@ FIRE_FIGHTING_STATE strafe_right() {
   static int power = 150;
   IR_Sensors();
   Gyro();
-  bluetoothcall(-1, -1, -1, -1, Ultradistance, IR_MID_1_DIST, IR_MID_2_DIST);
+  //bluetoothcall(-1, -1, -1, -1, Ultradistance, IR_MID_1_DIST, IR_MID_2_DIST);
 
   strafe(power);
 
@@ -671,7 +669,7 @@ FIRE_FIGHTING_STATE strafe_right() {
     return STRAFE_LEFT;
   }
 
-  if(IR_MID_1_DIST < 30) { // keep strafing if obstacle in the way
+  if(IR_MID_1_DIST < 20) { // keep strafing if obstacle in the way
     strafe_right_time = millis(); // update time until obstacle passed
     return STRAFE_RIGHT;
   }
@@ -717,6 +715,9 @@ void rotate(float angle) { // Rotates robot using PID control - MIGHT NEED TO AD
   }
   
   reference = angle * (PI / 180); // convert to radians
+  
+  currentAngle = 0;
+  radiansAngle = 0;
 
   while (TURNING) {
     TurnController(); // CONTROL LOOP
@@ -726,6 +727,7 @@ void rotate(float angle) { // Rotates robot using PID control - MIGHT NEED TO AD
   Ki = 0.1;
   turningTime = 0;
   currentAngle = 0;
+  radiansAngle = 0;
   accelerated = false;
 
   stop(); // stop motors
@@ -995,7 +997,6 @@ void TurnController() { // controller for turning
   // exit condition
   if (abs(error < 0.15)) { // turning exit condition
     TURNING = false;
-    currentAngle = 0;
     return;
   }
 
