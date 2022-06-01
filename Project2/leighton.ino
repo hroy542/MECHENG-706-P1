@@ -114,12 +114,12 @@ int PT_diff = 0;
 float PT_ratio = 0;
 float PT_sum = 0;
 
-float Kp_align = 100;
+float Kp_align = 150;
 float PT_correction = 0;
 
 int repos_time = 0; // time for robot to drive forward to reposition
 const int min_detect_threshold = 0; // minimum value to know if fire is present - SUBJECT TO CHANGE 
-const int detection_threshold = 1800; // when close to fire - SUBJECT TO CHANGE
+const int detection_threshold = 1500; // when close to fire - SUBJECT TO CHANGE
 //----Phototransistors----
 
 //----Obstacle Avoidance----
@@ -130,6 +130,7 @@ int strafe_left_time = 0;
 int strafe_reverse_left_time = 0;
 int strafe_right_time = 0;
 int strafe_reverse_right_time = 0;
+bool pass = false;
 int pass_start_time = 0;
 //----Obstacle Avoidance----
 
@@ -374,7 +375,8 @@ RUN_STATE detect() { // initial detection and alignment towards fire from starti
   
   int power = 200;
   int count = 0;
-  bool CCW = false;                                                                                                                                                                                                         
+  float ratio_threshold = 1.15;
+  bool CCW = false;                                                                                                                                                                                                 
 
   turret_motor.writeMicroseconds(1445);
 
@@ -405,13 +407,13 @@ RUN_STATE detect() { // initial detection and alignment towards fire from starti
       PT_ratio = 1.0 / PT_ratio;
     }
     
-    if(PT_sum > 60 && PT_ratio < 1.1) {
+    if(PT_sum > 60 && PT_ratio < ratio_threshold) {
       stop();
       break;
     }
     else {
       if(PT_ratio < 1.8) { // slow motors as approaches
-        power = 200 * (PT_ratio / 2.5);
+        power = 200 * (PT_ratio / 2);
       }
       else {
         power = 200;
@@ -451,7 +453,7 @@ RUN_STATE reposition() {
     return DETECT; // COULD MAYBE RETURN FORWARD_DEFAULT BASED ON HOW EFECTIVE IT IS AT ALIGNING TOWARDS FIRE
     // return FORWARD_DEFAULT;
   }
-  else if(Ultradistance < 10 || IR_LONG_1_DIST <= 15 || IR_LONG_2_DIST <= 15) { // if obstacle reached - could slow down to a stop 20cm away
+  else if(Ultradistance < 15 || IR_LONG_1_DIST <= 16 || IR_LONG_2_DIST <= 16) { // if obstacle reached - could slow down to a stop 20cm away
     stop();
     delay(100);
     rotate(180);
@@ -491,7 +493,7 @@ RUN_STATE find_fire() {
   if(numFires == 1 && extinguished) { // if one fire has just been extinguished - find other fire
     extinguished = false;
     forward_straight(-150);
-    delay(500);
+    delay(100);
     //rotate(180);
     return DETECT;
   }
@@ -510,6 +512,7 @@ RUN_STATE complete() {
 
 FIRE_FIGHTING_STATE forward_default() { // default driving forward
   static int power = 200; // Could potentially decrease power depending on how close to obstacle - making stopping less abrupt
+  pass = false;
   
   Ultrasound();
   IR_Sensors();
@@ -517,22 +520,20 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
   Update(); // alignment to fire using PTs and applying gain - TEST
   //Sweep(); // alignment to fire using servo and rotating after each sweep - TEST
 
+  // SIDE OBSTACLE DETECTION
+  if(IR_MID_1_DIST <= 12) {
+    stop();
+    rotate(15);
+  }
+  else if(IR_MID_2_DIST <= 12) {
+    stop();
+    rotate(-15);
+  }
+
   forward_towards_fire(power); // set motor power forward
 
-  // SIDE OBSTACLE DETECTION
-  if(IR_MID_1_DIST <= 8) {
-    stop();
-    rotate(20);
-    return FORWARD_DEFAULT;
-  }
-  else if(IR_MID_2_DIST < 8) {
-    stop();
-    rotate(-20);
-    return FORWARD_DEFAULT;
-  }
-
   // FRONT OBSTACLE DETECTION
-  if(Ultradistance < 12 || IR_LONG_1_DIST <= 15 || IR_LONG_2_DIST <= 15) {
+  if(Ultradistance < 15 || IR_LONG_1_DIST <= 16 || IR_LONG_2_DIST <= 16) {
 
 //    if(Ultradistance + IR_LONG_1_DIST + IR_LONG_2_DIST <= 55) { // if at a wall - DEFINITELY A MORE SOPHISTICATED WAY TO DO THIS
 //      stop();
@@ -541,10 +542,10 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
 //      return FORWARD_DEFAULT;
 //    }
     
-    if(Ultradistance < 10) {
+    if(Ultradistance < 15) {
       ultrasonic_close = true;
     }
-    else if(IR_LONG_1_DIST <= 10) {
+    else if(IR_LONG_1_DIST <= 16) {
       left_IR_close = true;
     }
     else {
@@ -553,9 +554,11 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
     
     stop();
     delay(100);
-    is_fire_close();
+    //is_fire_close();
+
+    phototransistors();
     
-    if(fire_is_close) {
+    if(PT_sum > detection_threshold) {
       return EXTINGUISH;
     }
     else if(left_IR_close) { // direction of strafe depending on front IR readings
@@ -596,16 +599,28 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
 
 FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
   int power = 200;
+  pass = true;
   pass_start_time = millis(); // get starting time
   
-  while((millis() - pass_start_time) < 1700) { // drive forward until 1500ms elapsed
+  while((millis() - pass_start_time) < 1500) { // drive forward until 1500ms elapsed
     IR_Sensors();
     Ultrasound();
     Gyro();
 
+    if(strafed_left) {
+      if(IR_MID_1_DIST <= 12) {
+        rotate(15);
+      }
+    }
+    else if(strafed_right) {
+      if(IR_MID_2_DIST <= 12) {
+        rotate(-15);
+      }
+    }
+
     forward_straight(power); // drive forward
 
-    if(Ultradistance < 12 || IR_LONG_1_DIST <= 15 || IR_LONG_2_DIST <= 15) { // if obstacle detected
+    if(Ultradistance < 15 || IR_LONG_1_DIST <= 16 || IR_LONG_2_DIST <= 16) { // if obstacle detected
 
 //      if(Ultradistance + IR_LONG_1_DIST + IR_LONG_2_DIST <= 55) { // if at a wall - DEFINITELY A MORE SOPHISTICATED WAY TO DO THIS
 //        stop();
@@ -614,10 +629,10 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
 //        return FORWARD_DEFAULT;
 //      }
 
-      if(Ultradistance < 12) {
+      if(Ultradistance < 15) {
         ultrasonic_close = true;
       }
-      else if(IR_LONG_1_DIST <= 15) {
+      else if(IR_LONG_1_DIST <= 16) {
         left_IR_close = true;
       }
       else {
@@ -627,16 +642,13 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
       stop();
       delay(100);
       phototransistors();
-      is_fire_close();
+      //is_fire_close();
       
-      if(fire_is_close) { // put out fire if detected
+      if(PT_sum > detection_threshold) { // put out fire if detected
         return EXTINGUISH;
       }
-      else if(strafed_left) { // strafe left if already strafed left
-        return STRAFE_LEFT;
-      }
-      else if(strafed_right) { // strafe right if already strafed right
-        return STRAFE_RIGHT;
+      else {
+        return REALIGN;
       }
     }
   }
@@ -647,7 +659,6 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
 FIRE_FIGHTING_STATE realign() {
   int power = 150;
   int count = 0;
-  bool CCW = false;  
   turret_motor.writeMicroseconds(1445);
   
   if(strafed_left) {                                                                                                                                                                                                
@@ -702,7 +713,7 @@ FIRE_FIGHTING_STATE realign() {
           power = 150;
         }
         
-        cw(power);
+        ccw(power);
       }
   
       delay(5);
@@ -724,13 +735,14 @@ FIRE_FIGHTING_STATE strafe_left() {
 
   strafe(power); // left strafe
 
-  if(IR_MID_1_DIST <= 10) { // if left side IR detects obstacle strafe other way to avoid obstacle
-    stop();
-    strafed_left = false;
-    strafe_reversed = true;
-    strafe_reverse_right_time = millis() - strafe_left_time; // time needed to strafe back
-    return STRAFE_RIGHT;
+  if(IR_MID_1_DIST <= 12) { // if left side IR detects obstacle strafe other way to avoid obstacle
+      stop();
+      strafed_left = false;
+      strafe_reversed = true;
+      strafe_reverse_right_time = millis() - strafe_left_time; // time needed to strafe back
+      return STRAFE_RIGHT;
   }
+
 
   if(strafe_reversed) {
     reverse_time = millis();
@@ -745,10 +757,10 @@ FIRE_FIGHTING_STATE strafe_left() {
   }
 
   if(left_IR_close) {
-    if(millis() - strafe_left_time < 2300) {
+    if(millis() - strafe_left_time < 2100) {
       return STRAFE_LEFT;
     }
-    else if(IR_LONG_2_DIST < 20) { // still in the way of obstacle
+    else if(IR_LONG_2_DIST <= 20) { // still in the way of obstacle
       delay(100);
       return STRAFE_LEFT;
     }
@@ -758,10 +770,10 @@ FIRE_FIGHTING_STATE strafe_left() {
     }
   }
   else if(ultrasonic_close) {
-    if(millis() - strafe_left_time < 1625) {
+    if(millis() - strafe_left_time < 1450) {
       return STRAFE_LEFT;
     }
-    else if(IR_LONG_2_DIST < 20) { // still in the way of obstacle
+    else if(IR_LONG_2_DIST <= 20) { // still in the way of obstacle
       delay(100);
       return STRAFE_LEFT;
     }
@@ -771,10 +783,10 @@ FIRE_FIGHTING_STATE strafe_left() {
     }
   }
   else if(right_IR_close) {
-    if(millis() - strafe_left_time < 950) {
+    if(millis() - strafe_left_time < 800) {
       return STRAFE_LEFT;
     }
-    else if(IR_LONG_2_DIST < 20) { // still in the way of obstacle
+    else if(IR_LONG_2_DIST <= 20) { // still in the way of obstacle
       return STRAFE_LEFT;
     }
     else {
@@ -794,12 +806,12 @@ FIRE_FIGHTING_STATE strafe_right() {
 
   strafe(power); // right strafe
 
-  if(IR_MID_2_DIST < 10) { // if right side IR detects obstacle strafe other way to avoid obstacle
-    stop();
-    strafed_right = false;
-    strafe_reversed = true;
-    strafe_reverse_left_time = millis() - strafe_right_time;
-    return STRAFE_RIGHT;
+  if(IR_MID_1_DIST <= 12) { // if left side IR detects obstacle strafe other way to avoid obstacle
+      stop();
+      strafed_right = false;
+      strafe_reversed = true;
+      strafe_reverse_left_time = millis() - strafe_right_time; // time needed to strafe back
+      return STRAFE_LEFT;
   }
 
   if(strafe_reversed) {
@@ -815,7 +827,7 @@ FIRE_FIGHTING_STATE strafe_right() {
   }
   
   if(left_IR_close) {
-    if(millis() - strafe_right_time < 950) {
+    if(millis() - strafe_right_time < 800) {
       return STRAFE_RIGHT;
     }
     else if(IR_LONG_1_DIST <= 20) { // still in the way of obstacle
@@ -828,7 +840,7 @@ FIRE_FIGHTING_STATE strafe_right() {
     }
   }
   else if(ultrasonic_close) {
-    if(millis() - strafe_right_time < 1625) {
+    if(millis() - strafe_right_time < 1450) {
       return STRAFE_RIGHT;
     }
     else if(IR_LONG_1_DIST <= 20) { // still in the way of obstacle
@@ -841,7 +853,7 @@ FIRE_FIGHTING_STATE strafe_right() {
     }
   }
   else if(right_IR_close) {
-    if(millis() - strafe_right_time < 2300) {
+    if(millis() - strafe_right_time < 2100) {
       return STRAFE_RIGHT;
     }
     else if(IR_LONG_1_DIST <= 20) { // still in the way of obstacle
@@ -1048,8 +1060,6 @@ void align_fan() {
     delay(100);//****** was 10 before
     phototransistors(); // read phototransistors
   }
-  
-  align_servo_val = turret_motor.read();
 }
 
 void align_robot() { // aligns robot to fire using PTs
@@ -1073,7 +1083,6 @@ void align_robot() { // aligns robot to fire using PTs
 
 void put_out_fire() {
   // Set mosfet pin high for 10 seconds (fan)
-  turret_motor.writeMicroseconds(align_servo_val);
   phototransistors(); 
 
   while((PT2_reading >= 250)&&(PT3_reading >= 250)){
@@ -1208,7 +1217,6 @@ void PID_Controller() {
     accelerated = true;
   }
 
-
   lastError = error;
   previousTime = currentTime;
 }
@@ -1271,46 +1279,46 @@ void Gyro() { // could be tuned better
   prev_gyroTime = gyroTime;
 }
 
-float IR_dist(IR code) { // find distances using calibration curve equations
-  float est, dist;
-  int adc;
-
-  switch (code) {
-    case LEFT:
-//      adc = analogRead(IR_MID_1);
-//      if (adc != 0 && adc <= 650) {
-//        dist = (5586.2) / (pow(adc, 1.15));
-//        est = Kalman(dist, last_est[0], last_var[0], LEFT);
+//float IR_dist(IR code) { // find distances using calibration curve equations
+//  float est, dist;
+//  int adc;
 //
-//        //MA FILTER
-//        SUM[0] -= FRONT_LIR[index[0]];
-//        FRONT_LIR[index[0]] = est;
-//        SUM[0] += est;
-//        index[0] = (index[0] + 1) % WINDOW_SIZE;
-//        averaged[0] = SUM[0] / WINDOW_SIZE;
-//        est = averaged[0];
-//        last_est[0] = averaged[0];
-//        //MA FILTER
-//      } else {
-//        est = last_est[0];
-//      }
-
-      break;
-    case RIGHT:
-
-      break;
-    case FRONT_LEFT:
-
-      break;
-    case FRONT_RIGHT:
-
-      break;
-  }
-
-  delay(1);
-
-  return est;
-}
+//  switch (code) {
+//    case LEFT:
+////      adc = analogRead(IR_MID_1);
+////      if (adc != 0 && adc <= 650) {
+////        dist = (5586.2) / (pow(adc, 1.15));
+////        est = Kalman(dist, last_est[0], last_var[0], LEFT);
+////
+////        //MA FILTER
+////        SUM[0] -= FRONT_LIR[index[0]];
+////        FRONT_LIR[index[0]] = est;
+////        SUM[0] += est;
+////        index[0] = (index[0] + 1) % WINDOW_SIZE;
+////        averaged[0] = SUM[0] / WINDOW_SIZE;
+////        est = averaged[0];
+////        last_est[0] = averaged[0];
+////        //MA FILTER
+////      } else {
+////        est = last_est[0];
+////      }
+//
+//      break;
+//    case RIGHT:
+//
+//      break;
+//    case FRONT_LEFT:
+//
+//      break;
+//    case FRONT_RIGHT:
+//
+//      break;
+//  }
+//
+//  delay(1);
+//
+//  return est;
+//}
 
 // Kalman Filter for IR sensors
 float Kalman(float rawdata, float prev_est, float last_variance, IR code) {
