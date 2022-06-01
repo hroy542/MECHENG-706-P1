@@ -169,6 +169,35 @@ float RIGHT_PT_2[WINDOW_SIZE];
 float averaged[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; //ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO, [6]-[9]PT
 //----MA Filter----
 
+//Median Filtering using the sharp library -------------
+const byte medianFilterWindowSize = 5;
+const byte medianFilterWindowSize1 = 11;
+
+SharpDistSensor LEFT_LONG(IR_LONG_1, medianFilterWindowSize);
+SharpDistSensor RIGHT_LONG(IR_LONG_2, medianFilterWindowSize);
+SharpDistSensor LEFT_MID(IR_MID_1, medianFilterWindowSize1);
+SharpDistSensor RIGHT_MID(IR_MID_2, medianFilterWindowSize1);
+
+const float C_L1 = 7058.6;
+const float P_L1 = -1.066;
+const float C_L2 = 11178;
+const float P_L2 = -1.14;
+const float C_M1 = 5586.2;
+const float P_M1 = -1.15;
+const float C_M2 = 452.63;
+const float P_M2 = -0.728;
+
+const unsigned int minVal_L1 = 40; // ~800 mm
+const unsigned int maxVal_L1 = 500; // ~50mm
+const unsigned int minVal_L2 = 130; // ~800 mm
+const unsigned int maxVal_L2 = 500; // ~50mm
+const unsigned int minVal_M1 = 90; // ~800 mm
+const unsigned int maxVal_M1 = 410; // ~50mm
+const unsigned int minVal_M2 = 35; // ~800 mm
+const unsigned int maxVal_M2 = 400; // ~50mm
+
+//Median Filtering using the sharp library -------------
+
 //----Gyro----
 const int gyroPin = A8;
 int gyroADC = 0;
@@ -242,6 +271,10 @@ HardwareSerial *SerialCom;
 int pos = 0;
 void setup(void)
 {
+  LEFT_LONG.setPowerFitCoeffs(C_L1, P_L1, minVal_L1, maxVal_L1);
+  RIGHT_LONG.setPowerFitCoeffs(C_L2, P_L2, minVal_L2, maxVal_L2);
+  LEFT_MID.setPowerFitCoeffs(C_M1, P_M1, minVal_M1, maxVal_M1);
+  RIGHT_MID.setPowerFitCoeffs(C_M2, P_M2, minVal_M2, maxVal_M2);
   // The Trigger pin will tell the sensor to range find
   pinMode(trigPin, OUTPUT);
   digitalWrite(trigPin, LOW);
@@ -418,7 +451,7 @@ RUN_STATE reposition() {
     return DETECT; // COULD MAYBE RETURN FORWARD_DEFAULT BASED ON HOW EFECTIVE IT IS AT ALIGNING TOWARDS FIRE
     // return FORWARD_DEFAULT;
   }
-  else if(Ultradistance < 10 || IR_LONG_1_DIST < 15 || IR_LONG_2_DIST < 15) { // if obstacle reached - could slow down to a stop 20cm away
+  else if(Ultradistance < 10 || IR_LONG_1_DIST <= 15 || IR_LONG_2_DIST <= 15) { // if obstacle reached - could slow down to a stop 20cm away
     stop();
     delay(100);
     rotate(180);
@@ -487,7 +520,7 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
   forward_towards_fire(power); // set motor power forward
 
   // SIDE OBSTACLE DETECTION
-  if(IR_MID_1_DIST < 8) {
+  if(IR_MID_1_DIST <= 8) {
     stop();
     rotate(20);
     return FORWARD_DEFAULT;
@@ -499,9 +532,9 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
   }
 
   // FRONT OBSTACLE DETECTION
-  if(Ultradistance < 12 || IR_LONG_1_DIST < 15 || IR_LONG_2_DIST < 15) {
+  if(Ultradistance < 12 || IR_LONG_1_DIST <= 15 || IR_LONG_2_DIST <= 15) {
 
-//    if(Ultradistance + IR_LONG_1_DIST + IR_LONG_2_DIST < 55) { // if at a wall - DEFINITELY A MORE SOPHISTICATED WAY TO DO THIS
+//    if(Ultradistance + IR_LONG_1_DIST + IR_LONG_2_DIST <= 55) { // if at a wall - DEFINITELY A MORE SOPHISTICATED WAY TO DO THIS
 //      stop();
 //      at_wall = true;
 //      rotate(180);
@@ -511,7 +544,7 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
     if(Ultradistance < 10) {
       ultrasonic_close = true;
     }
-    else if(IR_LONG_1_DIST < 10) {
+    else if(IR_LONG_1_DIST <= 10) {
       left_IR_close = true;
     }
     else {
@@ -536,7 +569,7 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
       }
     }
     else if(right_IR_close) {
-      if(IR_MID_1_DIST < 30) { // if not enough space on the left
+      if(IR_MID_1_DIST <= 30) { // if not enough space on the left
         strafe_right_time = millis();
         return STRAFE_RIGHT;
       }
@@ -572,9 +605,9 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
 
     forward_straight(power); // drive forward
 
-    if(Ultradistance < 12 || IR_LONG_1_DIST < 15 || IR_LONG_2_DIST < 15) { // if obstacle detected
+    if(Ultradistance < 12 || IR_LONG_1_DIST <= 15 || IR_LONG_2_DIST <= 15) { // if obstacle detected
 
-//      if(Ultradistance + IR_LONG_1_DIST + IR_LONG_2_DIST < 55) { // if at a wall - DEFINITELY A MORE SOPHISTICATED WAY TO DO THIS
+//      if(Ultradistance + IR_LONG_1_DIST + IR_LONG_2_DIST <= 55) { // if at a wall - DEFINITELY A MORE SOPHISTICATED WAY TO DO THIS
 //        stop();
 //        at_wall = true;
 //        rotate(180);
@@ -584,7 +617,7 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
       if(Ultradistance < 12) {
         ultrasonic_close = true;
       }
-      else if(IR_LONG_1_DIST < 15) {
+      else if(IR_LONG_1_DIST <= 15) {
         left_IR_close = true;
       }
       else {
@@ -691,7 +724,7 @@ FIRE_FIGHTING_STATE strafe_left() {
 
   strafe(power); // left strafe
 
-  if(IR_MID_1_DIST < 10) { // if left side IR detects obstacle strafe other way to avoid obstacle
+  if(IR_MID_1_DIST <= 10) { // if left side IR detects obstacle strafe other way to avoid obstacle
     stop();
     strafed_left = false;
     strafe_reversed = true;
@@ -785,7 +818,7 @@ FIRE_FIGHTING_STATE strafe_right() {
     if(millis() - strafe_right_time < 950) {
       return STRAFE_RIGHT;
     }
-    else if(IR_LONG_1_DIST < 20) { // still in the way of obstacle
+    else if(IR_LONG_1_DIST <= 20) { // still in the way of obstacle
       delay(100);
       return STRAFE_RIGHT;
     }
@@ -798,7 +831,7 @@ FIRE_FIGHTING_STATE strafe_right() {
     if(millis() - strafe_right_time < 1625) {
       return STRAFE_RIGHT;
     }
-    else if(IR_LONG_1_DIST < 20) { // still in the way of obstacle
+    else if(IR_LONG_1_DIST <= 20) { // still in the way of obstacle
       delay(100);
       return STRAFE_RIGHT;
     }
@@ -811,7 +844,7 @@ FIRE_FIGHTING_STATE strafe_right() {
     if(millis() - strafe_right_time < 2300) {
       return STRAFE_RIGHT;
     }
-    else if(IR_LONG_1_DIST < 20) { // still in the way of obstacle
+    else if(IR_LONG_1_DIST <= 20) { // still in the way of obstacle
       return STRAFE_RIGHT;
     }
     else {
@@ -1212,10 +1245,10 @@ void Ultrasound() {
 }
 
 void IR_Sensors() { // Calculates distances from centre of robot to where IR detects
-  IR_LONG_1_DIST = IR_dist(FRONT_LEFT) + IR_LONG_OFFSET;
-  IR_LONG_2_DIST = IR_dist(FRONT_RIGHT) + IR_LONG_OFFSET;
-  IR_MID_1_DIST = IR_dist(LEFT);
-  IR_MID_2_DIST = IR_dist(RIGHT);
+  IR_LONG_1_DIST = LEFT_LONG.getDist() + IR_LONG_OFFSET;
+  IR_LONG_2_DIST = RIGHT_LONG.getDist() + IR_LONG_OFFSET;
+  IR_MID_1_DIST = LEFT_MID.getDist();
+  IR_MID_2_DIST = RIGHT_MID.getDist();
 }
 
 void Gyro() { // could be tuned better
@@ -1244,13 +1277,12 @@ float IR_dist(IR code) { // find distances using calibration curve equations
 
   switch (code) {
     case LEFT:
-      adc = analogRead(IR_MID_1);
-      if (adc != 0 && adc <= 650) {
-        dist = (5586.2) / (pow(adc, 1.15));
-        est = dist;
-        //est = Kalman(dist, last_est[0], last_var[0], LEFT);
-
-        //MA FILTER
+//      adc = analogRead(IR_MID_1);
+//      if (adc != 0 && adc <= 650) {
+//        dist = (5586.2) / (pow(adc, 1.15));
+//        est = Kalman(dist, last_est[0], last_var[0], LEFT);
+//
+//        //MA FILTER
 //        SUM[0] -= FRONT_LIR[index[0]];
 //        FRONT_LIR[index[0]] = est;
 //        SUM[0] += est;
@@ -1261,80 +1293,17 @@ float IR_dist(IR code) { // find distances using calibration curve equations
 //        //MA FILTER
 //      } else {
 //        est = last_est[0];
-      }
-      else {
-        est = 999;
-      }
+//      }
+
       break;
     case RIGHT:
-      adc = analogRead(IR_MID_2);
-      if (adc != 0 && adc <= 650) {
-        dist = (452.63) / (pow(adc, 0.728));
-        est = dist;
-//        est = Kalman(dist, last_est[1], last_var[1], RIGHT);
-//
-//        
-//        //MA FILTER
-//        SUM[1] -= BACK_LIR[index[1]];
-//        BACK_LIR[index[1]] = est;
-//        SUM[1] += est;
-//        index[1] = (index[1] + 1) % WINDOW_SIZE;
-//        averaged[1] = SUM[1] / WINDOW_SIZE;
-//        est = averaged[1];
-//        last_est[1] = averaged[1];
-//        //MA FILTER
-//      } else {
-//        est = last_est[1];
-      }
-      else {
-        est = 999;
-      }
+
       break;
     case FRONT_LEFT:
-      adc = analogRead(IR_LONG_1);
-      if (adc != 0 && adc <= 650) {
-        dist = (7058.6) / (pow(adc, 1.066));
-        est = dist;
-//        est = Kalman(dist, last_est[2], last_var[2], FRONT_LEFT);
-//
-//        //MA FILTER
-//        SUM[2] -= LEFT_MIR[index[2]];
-//        LEFT_MIR[index[2]] = est;
-//        SUM[2] += est;
-//        index[2] = (index[2] + 1) % WINDOW_SIZE;
-//        averaged[2] = SUM[2] / WINDOW_SIZE;
-//        est = averaged[2];
-//        last_est[2] = averaged[2];
-//        //MA FILTER
-//      } else {
-//        est = last_est[2];
-      }
-      else {
-        est = 999;
-      }
+
       break;
     case FRONT_RIGHT:
-      adc = analogRead(IR_LONG_2);
-      if (adc != 0 && adc <= 650) {
-        dist = (11178) / (pow(adc, 1.14));
-        est = dist;
-//        est = Kalman(dist, last_est[3], last_var[3], FRONT_RIGHT);
-//
-//        //MA FILTER
-//        SUM[3] -= RIGHT_MIR[index[3]];
-//        RIGHT_MIR[index[3]] = est;
-//        SUM[3] += est;
-//        index[3] = (index[3] + 1) % WINDOW_SIZE;
-//        averaged[3] = SUM[3] / WINDOW_SIZE;
-//        est = averaged[3];
-//        last_est[3] = averaged[3];
-//        //MA FILTER
-//      } else {
-//        est = last_est[3];
-      }
-      else {
-        est = 999;
-      }
+
       break;
   }
 
