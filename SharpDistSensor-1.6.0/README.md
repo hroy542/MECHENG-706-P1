@@ -1,3 +1,9 @@
+http://kinolien.github.io/gitzip by using GitHub API, and JSZip, FileSaver.js libraries.
+
+Step1: Input github url to the field at the top-right.
+Step2: Press enter or click download for download zip directly or click search for view the list of sub-folders and files.
+Step3: Click "Download Zip File" or "Get File" button to get files.
+
 # SharpDistSensor
 A library for the Arduino IDE that helps interface with Sharp analog distance sensors.
 
