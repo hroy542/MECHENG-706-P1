@@ -1,5 +1,6 @@
 #include <Servo.h>  //Need for Servo pulse output
 #include <SoftwareSerial.h>
+#include <SharpDistSensor.h>
 
 //State machine states
 enum STATE {
@@ -458,7 +459,7 @@ RUN_STATE find_fire() {
     extinguished = false;
     forward_straight(-150);
     delay(500);
-    rotate(180);
+    //rotate(180);
     return DETECT;
   }
   else if(numFires == 2) { // end when all fires detected
