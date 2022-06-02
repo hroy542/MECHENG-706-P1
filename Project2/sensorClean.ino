@@ -1,4 +1,6 @@
 #include <SoftwareSerial.h>
+#include <SharpDistSensor.h>
+
 
 #define INTERNAL_LED 13
 
@@ -14,10 +16,14 @@ String Delimiter = ", ";
 SoftwareSerial BluetoothSerial(BLUETOOTH_RX, BLUETOOTH_TX);
 
 // Declare Pins
-const int LEFT_FRONT_LIR = A4; //sensor is attatched on pin A4
-const int LEFT_BACK_LIR = A5; //sensor is attatched on pin A5
-const int LEFT_BACK_MIR = A6; //sensor is attatched on pin A6
-const int RIGHT_BACK_MIR = A7; //sensor is attatched on pin A7
+// Left long range IR
+const int IR_MID_1 = A4;
+// Right long range IR
+const int IR_MID_2 = A5;
+// Front left mid range IR
+const int IR_LONG_1 = A6;
+// Front right mid range IR
+const int IR_LONG_2 = A7;
 const int GYRO = A8; //Gyro is attatched on pin A8
 const int PTSensor1 = A9; //PTsensor1 is attached on pin A9
 const int PTSensor2 = A10;
@@ -28,8 +34,8 @@ const int echoPin = 35;
 const int MosfetPin = 45;
 
 // Declare Variables
-int ADC_sensor[10]; //ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO, [6]PTSensor1, [7]PTSensor2, [8]PTSensor3, [9]PTSensor4
-float callibrated_sensor[10]; //ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO, [6]PTSensor1, [7]PTSensor2, [8]PTSensor3, [9]PTSensor
+int ADC_sensor[10]; //ORDER GOES; [0]LEFT LIR, [1]RIGHT LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO, [6]PTSensor1, [7]PTSensor2, [8]PTSensor3, [9]PTSensor4
+float callibrated_sensor[10]; //ORDER GOES; [0]LEFT LIR, [1]RIGHT LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO, [6]PTSensor1, [7]PTSensor2, [8]PTSensor3, [9]PTSensor
 float temp = 0;
 float Ultraduration;
 float Ultradistance;
@@ -56,24 +62,54 @@ float angularVelocity = 0;
 //----GYRO Variable----*/
 
 //----Kalman Filter----
-float sensor_past[6] = {0, 0, 0, 0, 0, 0}; //ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
-float last_var[6] = {999, 999, 999, 999, 999, 999}; //ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
-float process_noise[6] = {5, 5, 5, 5, 10, 1}; //ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
-float sensor_noise[6] = {5, 5, 5, 5, 50, 25}; //ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
+float sensor_past[6] = {0, 0, 0, 0, 0, 0}; //ORDER GOES; [0]LEFT LIR, [1]RIGHT LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
+float last_var[6] = {999, 999, 999, 999, 999, 999}; //ORDER GOES; [0]LEFT LIR, [1]RIGHT LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
+float process_noise[6] = {5, 5, 5, 5, 10, 1}; //ORDER GOES; [0]LEFT LIR, [1]RIGHT LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
+float sensor_noise[6] = {6, 6, 6, 6, 50, 25}; //ORDER GOES; [0]LEFT LIR, [1]RIGHT LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
 //----Kalman Filter----
 
 //MA filter for the IR + Sonar sensors -------------
 #define WINDOW_SIZE 13
-int index[6] = {0, 0, 0, 0, 0, 0}; //ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
-float value[6] = {0, 0, 0, 0, 0, 0}; //ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
-float sum[6] = {0, 0, 0, 0, 0, 0}; //ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
+int index[6] = {0, 0, 0, 0, 0, 0}; //ORDER GOES; [0]LEFT LIR, [1]RIGHT LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
+float value[6] = {0, 0, 0, 0, 0, 0}; //ORDER GOES; [0]LEFT LIR, [1]RIGHT LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
+float sum[6] = {0, 0, 0, 0, 0, 0}; //ORDER GOES; [0]LEFT LIR, [1]RIGHT LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
 float FRONT_LIR[WINDOW_SIZE];
 float BACK_LIR[WINDOW_SIZE];
 float LEFT_MIR[WINDOW_SIZE];
 float RIGHT_MIR[WINDOW_SIZE];
 float SONAR[5];
-float averaged[6] = {0, 0, 0, 0, 0, 0}; //ORDER GOES; [0]FRONT LIR, [1]BACK LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
+float averaged[6] = {0, 0, 0, 0, 0, 0}; //ORDER GOES; [0]LEFT LIR, [1]RIGHT LIR, [2]LEFT MIR, [3]RIGHT MIR, [4]SONAR, [5]GYRO
 //MA Filter -------------
+
+
+//Median Filtering using the sharp library -------------
+const byte medianFilterWindowSize = 5;
+const byte medianFilterWindowSize1 = 11;
+
+SharpDistSensor LEFT_LONG(IR_LONG_1, medianFilterWindowSize);
+SharpDistSensor RIGHT_LONG(IR_LONG_2, medianFilterWindowSize);
+SharpDistSensor LEFT_MID(IR_MID_1, medianFilterWindowSize1);
+SharpDistSensor RIGHT_MID(IR_MID_2, medianFilterWindowSize1);
+
+const float C_L1 = 7058.6;
+const float P_L1 = -1.066;
+const float C_L2 = 11178;
+const float P_L2 = -1.14;
+const float C_M1 = 5586.2;
+const float P_M1 = -1.15;
+const float C_M2 = 452.63;
+const float P_M2 = -0.728;
+
+const unsigned int minVal_L1 = 40; // ~800 mm
+const unsigned int maxVal_L1 = 500; // ~50mm
+const unsigned int minVal_L2 = 130; // ~800 mm
+const unsigned int maxVal_L2 = 500; // ~50mm
+const unsigned int minVal_M1 = 90; // ~800 mm
+const unsigned int maxVal_M1 = 410; // ~50mm
+const unsigned int minVal_M2 = 35; // ~800 mm
+const unsigned int maxVal_M2 = 400; // ~50mm
+
+//Median Filtering using the sharp library -------------
 
 //Battery Check Variables
 int Lipo_level_cal;
@@ -87,12 +123,15 @@ void setup() {
   pinMode(echoPin, INPUT);
   pinMode(MosfetPin, OUTPUT);
 
+  LEFT_LONG.setPowerFitCoeffs(C_L1, P_L1, minVal_L1, maxVal_L1);
+  RIGHT_LONG.setPowerFitCoeffs(C_L2, P_L2, minVal_L2, maxVal_L2);
+  LEFT_MID.setPowerFitCoeffs(C_M1, P_M1, minVal_M1, maxVal_M1);
+  RIGHT_MID.setPowerFitCoeffs(C_M2, P_M2, minVal_M2, maxVal_M2);
+
   //----Gyro----
   int i;
   float summ = 0;
 
-  Serial.println("please keep the sensor still for calibration");
-  Serial.println("get the gyro zero voltage");
   for (i = 0; i < 100; i++) // read 100 values of voltage when gyro is at still, to calculate the zero-drift.
   {
     ADC_sensor[5] = analogRead(GYRO);
@@ -103,11 +142,15 @@ void setup() {
   //----Gyro----
 }
 
-int wirelesscallibration = 0; // 1 to automatically select the mode selected below; 0 to choose the mode using serial monitor
+//###############################################################################################################################//
+int wirelesscallibration = 1; // 1 to automatically select the mode selected below; 0 to choose the mode using serial monitor
+//###############################################################################################################################//
+
+
 void loop() {
   Serial.println("Please enter the mode you want to run");
   if (wirelesscallibration == 1) {
-    Mode = 13;
+    Mode = 8;
   } else {
     Mode = GetSerialIN();
   }
@@ -115,34 +158,34 @@ void loop() {
     //USE MODE 1 FOR CALLIBRATION, PRINTS OUT THE RAW ADC INPUTS
     case 1:
       while (1) {
-        ADC_sensor[0] = analogRead(LEFT_FRONT_LIR); // the read out is a signal from 0-1023 corresponding to 0-5v
-        ADC_sensor[1] = analogRead(LEFT_BACK_LIR);
-        ADC_sensor[2] = analogRead(LEFT_BACK_MIR);
-        ADC_sensor[3] = analogRead(RIGHT_BACK_MIR);
+        ADC_sensor[0] = analogRead(IR_LONG_1); // the read out is a signal from 0-1023 corresponding to 0-5v
+        ADC_sensor[1] = analogRead(IR_LONG_2);
+        ADC_sensor[2] = analogRead(IR_MID_1);
+        ADC_sensor[3] = analogRead(IR_MID_2);
         //Callibration code goes here
         Serial.print("LFL: ");
         Serial.print(ADC_sensor[0]);
         Serial.print("   |   ");
-        Serial.print("LBL: ");
+        Serial.print("RFL: ");
         Serial.print(ADC_sensor[1]);
         Serial.print("   |   ");
-        Serial.print("LBM: ");
+        Serial.print("LSM: ");
         Serial.print(ADC_sensor[2]);
         Serial.print("   |   ");
-        Serial.print("RBM: ");
+        Serial.print("RSM: ");
         Serial.println(ADC_sensor[3]);
 
         //Bluetooth Serial Prints
         BluetoothSerial.print("LFL: ");
         BluetoothSerial.print(ADC_sensor[0]);
         BluetoothSerial.print("   |   ");
-        BluetoothSerial.print("LBL: ");
+        BluetoothSerial.print("RFL: ");
         BluetoothSerial.print(ADC_sensor[1]);
         BluetoothSerial.print("   |   ");
-        BluetoothSerial.print("LBM: ");
+        BluetoothSerial.print("LSM: ");
         BluetoothSerial.print(ADC_sensor[2]);
         BluetoothSerial.print("   |   ");
-        BluetoothSerial.print("RBM: ");
+        BluetoothSerial.print("RSM: ");
         BluetoothSerial.println(ADC_sensor[3]);
         delay(200);
       }
@@ -178,54 +221,65 @@ void loop() {
     //USE MODE 4 TO PRINT OUT THE RAW AND FILTERED READINGS FOR THE FRONT LIR SENSOR
     case 4:
       while (1) {
-        ADC_sensor[0] = analogRead(LEFT_FRONT_LIR); // the read out is a signal from 0-1023 corresponding to 0-5v
+        ADC_sensor[0] = analogRead(IR_LONG_1); // the read out is a signal from 0-1023 corresponding to 0-5v
         if (ADC_sensor[0] != 0) {
           SensorSignalProcess(1, ADC_sensor[0]);
         }
+
+
       }
       break;
 
     //USE MODE 5 TO PRINT OUT THE RAW AND FILTERED READINGS FOR THE BACK LIR SENSOR
     case 5:
       while (1) {
-        ADC_sensor[1] = analogRead(LEFT_BACK_LIR); // the read out is a signal from 0-1023 corresponding to 0-5v
+        ADC_sensor[1] = analogRead(IR_LONG_2); // the read out is a signal from 0-1023 corresponding to 0-5v
         if (ADC_sensor[1] != 0) {
           SensorSignalProcess(2, ADC_sensor[1]);
         }
+
       }
       break;
 
     //USE MODE 6 TO PRINT OUT THE RAW AND FILTERED READINGS FOR THE LEFT MIR SENSOR
     case 6:
       while (1) {
-        ADC_sensor[2] = analogRead(LEFT_BACK_MIR); // the read out is a signal from 0-1023 corresponding to 0-5v
+        ADC_sensor[2] = analogRead(IR_MID_1); // the read out is a signal from 0-1023 corresponding to 0-5v
         if (ADC_sensor[2] != 0) {
           SensorSignalProcess(3, ADC_sensor[2]);
         }
+
       }
       break;
 
     //USE MODE 7 TO PRINT OUT THE RAW AND FILTERED READINGS FOR THE RIGHT MIR SENSOR
     case 7:
       while (1) {
-        ADC_sensor[3] = analogRead(RIGHT_BACK_MIR); // the read out is a signal from 0-1023 corresponding to 0-5v
+        ADC_sensor[3] = analogRead(IR_MID_2); // the read out is a signal from 0-1023 corresponding to 0-5v
         if (ADC_sensor[3] != 0) {
           SensorSignalProcess(4, ADC_sensor[3]);
         }
       }
       break;
 
-    //USE MODE 8 TO PRINT BOTH LONG RANGE IR FILTERED VALUES AT ONCE
+    //USE MODE 8 TO PRINT ALL IR FILTERED VALUES AT ONCE
     case 8:
       while (1) {
-        ADC_sensor[0] = analogRead(LEFT_FRONT_LIR); // the read out is a signal from 0-1023 corresponding to 0-5v
-        SensorSignalProcess(1, ADC_sensor[0]);
-        ADC_sensor[1] = analogRead(LEFT_BACK_LIR); // the read out is a signal from 0-1023 corresponding to 0-5v
-        SensorSignalProcess(2, ADC_sensor[1]);
-        //        Comment out the serial prints in the SensorSignalProcess function
-                Serial.print(averaged[0]);
-                Serial.print(", ");
-                Serial.println(averaged[1]);
+      
+//        Serial.print(C_L1* pow(analogRead(IR_LONG_1),P_L1));
+//        Serial.print(", ");
+//        Serial.println(LEFT_LONG.getDist());
+//        Serial.print(C_L2* pow(analogRead(IR_LONG_2), P_L2));
+//        Serial.print(", ");
+//        Serial.println(RIGHT_LONG.getDist());
+//        Serial.print(C_M1* pow(analogRead(IR_MID_1), P_M1));
+//        Serial.print(", ");
+//        Serial.println(LEFT_MID.getDist());
+        Serial.print(C_M2* pow(analogRead(IR_MID_2), P_M2));
+        Serial.print(", ");
+        Serial.println(RIGHT_MID.getDist());
+//        delay(5);
+        
 
       }
       break;
@@ -318,8 +372,13 @@ void loop() {
     case 13:
       while (1) {
         serialFlush(); // waits for serial buffer to clear
-        Serial.println("Please Enter the Distance away from the wall/obstacle");
-        int CaliDist = GetSerialIN();
+        Serial.println("Please Enter the Distance away from the wall/obstacle");\
+        int CaliDist;
+        if(!wirelesscallibration){
+          CaliDist = GetSerialIN();
+        } else {
+          CaliDist = 999;
+        }
         int count = 0;
         int iter = 60;
         float RMidSum = 0;
@@ -329,8 +388,8 @@ void loop() {
 
         Serial.println("CALLIBRATING DO NOT MOVE. CURRENT CALLBIRATION DIST: " + String(CaliDist));
         while (count < iter) {
-          ADC_sensor[3] = analogRead(RIGHT_BACK_MIR); // NOW THE RIGHT FRONT MID RANGE IR 
-          ADC_sensor[2] = analogRead(LEFT_BACK_MIR); // NOW THE LEFT FRONT MID RANGE IR
+          ADC_sensor[3] = analogRead(IR_MID_2); // NOW THE RIGHT SIDE MID RANGE IR 
+          ADC_sensor[2] = analogRead(IR_MID_1); // NOW THE LEFT SIDE MID RANGE IR
           RMidSum += ADC_sensor[3];
           LMidSum += ADC_sensor[2];
           count++;
@@ -348,7 +407,12 @@ void loop() {
       while (1) {
         serialFlush(); // waits for serial buffer to clear
         Serial.println("Please Enter the Distance away from the wall/obstacle");
-        int CaliDist = GetSerialIN();
+        int CaliDist;
+        if(!wirelesscallibration){
+          CaliDist = GetSerialIN();
+        } else {
+          CaliDist = 999;
+        }        
         int count = 0;
         int iter = 60;
         float RLongSum = 0;
@@ -358,8 +422,8 @@ void loop() {
 
         Serial.println("CALLIBRATING DO NOT MOVE. CURRENT CALLBIRATION DIST: " + String(CaliDist));
         while (count < iter) {
-          ADC_sensor[1] = analogRead(LEFT_BACK_LIR); // A5, NOW THE RIGHT SIDE LONG IR
-          ADC_sensor[0] = analogRead(LEFT_FRONT_LIR); // A4, NOW THE LEFT SIDE LONG IR
+          ADC_sensor[1] = analogRead(IR_LONG_2); // A5, NOW THE RIGHT FRONT LONG IR
+          ADC_sensor[0] = analogRead(IR_LONG_1); // A4, NOW THE LEFT FRONT LONG IR
           RLongSum += ADC_sensor[1];
           LLongSum += ADC_sensor[0];
           count++;
@@ -376,7 +440,12 @@ void loop() {
       while (1) {
         serialFlush(); // waits for serial buffer to clear
         Serial.println("Please Enter the Distance away from the wall/obstacle");
-        int CaliDist = GetSerialIN();
+        int CaliDist;
+        if(!wirelesscallibration){
+          CaliDist = GetSerialIN();
+        } else {
+          CaliDist = 999;
+        }
         int count = 0;
         int iter = 60;
         float PT1Sum = 0;
@@ -387,6 +456,9 @@ void loop() {
         float PT2Avg = 0;
         float PT3Avg = 0;
         float PT4Avg = 0;
+        float PTSum = 0;
+        float PTLeft = 0;
+        float PTRight = 0;
 
 
         Serial.println("CALLIBRATING DO NOT MOVE. CURRENT CALLBIRATION DIST: " + String(CaliDist));
@@ -399,6 +471,9 @@ void loop() {
           PT2Sum += ADC_sensor[7];
           PT3Sum += ADC_sensor[8];
           PT4Sum += ADC_sensor[9];
+          PTLeft = PT1Sum + PT2Sum;
+          PTRight = PT3Sum + PT4Sum;
+          PTSum = PTLeft + PTRight;
           count++;
           delay(15);
         }
@@ -406,8 +481,14 @@ void loop() {
         PT2Avg = PT2Sum/iter;
         PT3Avg = PT3Sum/iter;
         PT4Avg = PT4Sum/iter;
+        PTSum = PTSum/iter;
+        PTLeft = PTLeft/iter;
+        PTRight = PTRight/iter;
         Serial.println("At " + String(CaliDist) + " cm, PT1(LEFT MOST): " + String(PT1Avg) + ", PT2: " + String(PT2Avg) + ", PT3: " + String(PT3Avg) + ", PT4(RIGHT MOST): " + String(PT4Avg) );
+        Serial.println("PTLEFT: " + String(PTLeft) + "+ PTRight: " + String(PTRight) + " =  PTSum: " + String(PTSum));
         BluetoothSerial.println("At " + String(CaliDist) + " cm, PT1(LEFT MOST): " + String(PT1Avg) + ", PT2: " + String(PT2Avg) + ", PT3: " + String(PT3Avg) + ", PT4(RIGHT MOST): " + String(PT4Avg) );
+        BluetoothSerial.println("PTLEFT: " + String(PTLeft) + "+ PTRight: " + String(PTRight) + " =  PTSum: " + String(PTSum));
+
       }
       break;
   }
@@ -572,7 +653,7 @@ void SensorSignalProcess(int code, float RawADC) { // find distances using calib
   }
 }
 
-/*float Sonarkalman(float U){
+float Sonarkalman(float U){
   static const float R = 10;
   static const float H = 1.00;
   static float Q = 1;
@@ -583,7 +664,7 @@ void SensorSignalProcess(int code, float RawADC) { // find distances using calib
   U_hat += + K*(U-H*U_hat);
   P = (1-K*H)*P+Q;
   return U_hat;
-  }*/
+}
 
 float Kalman(float rawdata, float prev_est, float process_noise, float sensor_noise, float last_variance, int sensor) {  // Kalman Filter
   float a_priori_est, a_post_est, a_priori_var, kalman_gain;
