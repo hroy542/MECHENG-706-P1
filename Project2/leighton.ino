@@ -624,12 +624,18 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
 
   IR_Sensors();
   Ultrasound();
-  Gyro();
+  if(extra_power_passL == 0 && extra_power_passR == 0) { 
+    Gyro();
+  }
+  else {
+    gyroCorrection = 0;
+  }
 
   if(strafed_left) {
     if(IR_MID_1_DIST <= 9) {
-      extra_power_passR = 50;
+      extra_power_passR = 40;
       extra_power_passL = 0;
+      first_call = true;
     }
     else {
       extra_power_passR = 0;
@@ -663,7 +669,8 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
   else if(strafed_right) {
     if(IR_MID_2_DIST <= 9) {
       extra_power_passR = 0;
-      extra_power_passL = 50;
+      extra_power_passL = 40;
+      first_call = true;
     }
     else {
       extra_power_passR = 0;
