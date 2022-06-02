@@ -142,7 +142,10 @@ bool pass_IR_detected = false;
 bool pass_OL = false;
 int pass_time = 0;
 
-int between_time = 0;
+int extra_powerL = 0;
+int extra_powerR = 0;
+int extra_power_passL = 0;
+int extra_power_passR = 0;
 //----Obstacle Avoidance----
 
 //----Fire Fighting----
@@ -150,7 +153,7 @@ const int mosfetPin = 45; // mosfet pin for fan
 
 //########
 //int servo_val = 0;
-int align_servo_val = 1450; // facing forward
+int align_servo_val = 1445; // facing forward
 //########
 
 int numFires = 0;
@@ -234,6 +237,7 @@ float gyroCorrection = 0;
 //----Driving----
 bool TURNING = false;
 bool accelerated = false;
+bool first_call = true;
 //----Driving----
 
 // Anything over 400 cm (23200 us pulse) is "out of range". Hit:If you decrease to this the ranging sensor but the timeout is short, you may not need to read up to 4meters.
@@ -327,7 +331,7 @@ STATE initialising() {
 }
 
 STATE running() {
-  static RUN_STATE running_state = FIND_FIRE;
+  static RUN_STATE running_state = DETECT;
 
   //FSM
   switch (running_state) {
@@ -480,6 +484,8 @@ RUN_STATE find_fire() {
     min_detect_threshold = 40; // lower detection threshold for other fire
     forward_straight(-150);
     delay(50);
+    state = FORWARD_DEFAULT;
+    //reset();
     return DETECT;
   }
   else if(numFires == 2) { // end when all fires detected
@@ -496,7 +502,7 @@ RUN_STATE complete() {
 }
 
 FIRE_FIGHTING_STATE forward_default() { // default driving forward
-  static int power = 200; // Could potentially decrease power depending on how close to obstacle - making stopping less abrupt
+  int power = 200; // Could potentially decrease power depending on how close to obstacle - making stopping less abrupt
   pass = false;
   strafe_reverse_count = 0;
   
@@ -505,14 +511,14 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
   Update(); // alignment to fire using PTs and applying gain
 
   // SIDE OBSTACLE DETECTION
-  if(IR_MID_1_DIST <= 12) {
+  if(IR_MID_1_DIST <= 9) {
     l_side_IR_close = true;
   }
   else {
     l_side_IR_close = false;
   }
   
-  if(IR_MID_2_DIST <= 12) {
+  if(IR_MID_2_DIST <= 9) {
     r_side_IR_close = true;
   }
   else {
@@ -520,28 +526,32 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
   }
 
   if(l_side_IR_close && r_side_IR_close) {
-    forward_towards_fire(power);
+    extra_powerL = 0;
+    extra_powerR = 0;
   }
   else if(l_side_IR_close) {
-    stop();
-    rotate(20);
+    extra_powerR = 50;
+    extra_powerL = 0;
   }
   else if(r_side_IR_close) {
-    stop();
-    rotate(-20);
+    extra_powerL = 50;
+    extra_powerR = 0;
+  }
+  else {
+    extra_powerL = 0;
+    extra_powerR = 0;
   }
 
-  forward_straight(power); // set motor power forward
+  forward_towards_fire(power); // set motor power forward
 
   // FRONT OBSTACLE DETECTION
   if(Ultradistance < 15 || IR_LONG_1_DIST <= 16 || IR_LONG_2_DIST <= 16) {
 
-//    if(Ultradistance + IR_LONG_1_DIST + IR_LONG_2_DIST <= 55) { // if at a wall - DEFINITELY A MORE SOPHISTICATED WAY TO DO THIS
-//      stop();
-//      at_wall = true;
-//      rotate(180);
-//      return FORWARD_DEFAULT;
-//    }
+    currentAngle = 0;
+    radiansAngle = 0;
+
+    l_side_IR_close = false;
+    r_side_IR_close = false;
     
     if(Ultradistance < 15) {
       ultrasonic_close = true;
@@ -564,6 +574,9 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
     }
     else if(left_IR_close) { // direction of strafe depending on front IR readings
       left_IR_close = false;
+      right_IR_close = false;
+      ultrasonic_close = false;
+      first_call = true;
       if(IR_MID_2_DIST <= 17) { // if not enough space on the right
         return STRAFE_LEFT;
       }
@@ -572,7 +585,10 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
       }
     }
     else if(right_IR_close) {
+      left_IR_close = false;
       right_IR_close = false;
+      ultrasonic_close = false;
+      first_call = true;
       if(IR_MID_1_DIST <= 17) { // if not enough space on the left
         return STRAFE_RIGHT;
       }
@@ -580,8 +596,11 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
         return STRAFE_LEFT;
       }
     }
-    else if(ultrasonic_close) { // ultrasonic used to stop
+    else { // ultrasonic used to stop
+      left_IR_close = false;
+      right_IR_close = false;
       ultrasonic_close = false;
+      first_call = true;
       if(IR_MID_1_DIST > IR_MID_2_DIST) { // strafe left if more space on left side
         return STRAFE_LEFT;
       }
@@ -596,7 +615,7 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
 }
 
 FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
-  int power = 200;
+  int power = 180;
   pass = true;
 
   strafe_reverse_count = 0;
@@ -604,13 +623,17 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
   forward_straight(power); // drive forward
 
   IR_Sensors();
-  BluetoothSerial.println(IR_MID_2_DIST);
   Ultrasound();
   Gyro();
 
   if(strafed_left) {
-    if(IR_MID_1_DIST <= 11) {
-      rotate(15);
+    if(IR_MID_1_DIST <= 9) {
+      extra_power_passR = 50;
+      extra_power_passL = 0;
+    }
+    else {
+      extra_power_passR = 0;
+      extra_power_passL = 0;
     }
 
     if(IR_MID_2_DIST <= 15) {
@@ -624,10 +647,13 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
       }
     }
     else {
-      if(millis() - pass_time < 300) {
+      if(millis() - pass_time < 250) {
+        first_call = true;
         return FORWARD_PASS;
       }
       else {
+        stop;
+        delay(100);
         pass_IR_detected = false;
         pass_OL = false;
         return REALIGN;
@@ -635,8 +661,13 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
     }
   }
   else if(strafed_right) {
-    if(IR_MID_2_DIST <= 11) {
-      rotate(-15);
+    if(IR_MID_2_DIST <= 9) {
+      extra_power_passR = 0;
+      extra_power_passL = 50;
+    }
+    else {
+      extra_power_passR = 0;
+      extra_power_passL = 0;
     }
 
     if(IR_MID_1_DIST <= 15) {
@@ -650,10 +681,13 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
       }
     }
     else {
-      if(millis() - pass_time < 300) {
+      if(millis() - pass_time < 100) {
+        first_call = true;
         return FORWARD_PASS;
       }
       else {
+        stop();
+        delay(100);
         pass_IR_detected = false;
         pass_OL = false;
         return REALIGN;
@@ -681,6 +715,7 @@ FIRE_FIGHTING_STATE realign() {
       if(PT_sum > 60 && PT_ratio < 1.15) {
         stop();
         strafed_left = false;
+        strafed_right = false;
         return FORWARD_DEFAULT;
       }
       else {
@@ -709,6 +744,7 @@ FIRE_FIGHTING_STATE realign() {
       
       if(PT_sum > 60 && PT_ratio < 1.15) {
         stop();
+        strafed_left = false;
         strafed_right = false;
         return FORWARD_DEFAULT;
       }
@@ -729,14 +765,12 @@ FIRE_FIGHTING_STATE realign() {
 }
 
 FIRE_FIGHTING_STATE strafe_left() {
-  strafed_left = true;
-  static int power = -200;
-  int reverse_time = 0;
-  
+  BluetoothSerial.println("strafe left");
+
   IR_Sensors();
   Gyro();
 
-  strafe(power); // left strafe
+  strafe(-200.0); // left strafe
 
   if(IR_MID_1_DIST <= 8) { // if left side IR detects obstacle strafe other way to avoid obstacle
       stop();
@@ -762,8 +796,13 @@ FIRE_FIGHTING_STATE strafe_left() {
       return STRAFE_LEFT;
     }
     else {
+      stop();
+      delay(100);
       right_detected = false;
       strafe_OL = false;
+      strafed_left = true;
+      strafed_right = false;
+      first_call = true;
       return FORWARD_PASS;
     }    
   }
@@ -772,14 +811,12 @@ FIRE_FIGHTING_STATE strafe_left() {
 }
 
 FIRE_FIGHTING_STATE strafe_right() { 
-  strafed_right = true;
-  static int power = 200;
-  int reverse_time = 0;
+  BluetoothSerial.println("strafe right");
   
   IR_Sensors();
   Gyro();
 
-  strafe(power); // right strafe
+  strafe(200.0); // right strafe
 
   if(IR_MID_2_DIST <= 8) { // if left side IR detects obstacle strafe other way to avoid obstacle
       stop();
@@ -794,6 +831,7 @@ FIRE_FIGHTING_STATE strafe_right() {
     stop();
     strafe_reverse_count = 0;
     repos_time = millis();
+    first_call = true;
     return REPOSITION;
   }
   
@@ -809,11 +847,16 @@ FIRE_FIGHTING_STATE strafe_right() {
   }
   else {
     if(millis() - strafe_right_time < 100) {
-      return STRAFE_LEFT;
+      return STRAFE_RIGHT;
     }
     else {
+      stop();
+      delay(100);
       left_detected = false;
       strafe_OL = false;
+      strafed_left = false;
+      strafed_right = true;
+      first_call = true;
       return FORWARD_PASS;
     }    
   }
@@ -832,10 +875,11 @@ FIRE_FIGHTING_STATE extinguish() { // extinguish fire state
   fire_is_close = false;
   strafed_right = false;
   strafed_left = false;
-  return FORWARD_DEFAULT;;
+  return FORWARD_DEFAULT;
 }
 
 FIRE_FIGHTING_STATE reposition() { // when stuck and cant move - reposition into new position and detect fire again 
+  
   rotate(180);
 
   while(millis() - repos_time < 2000) {
@@ -845,7 +889,7 @@ FIRE_FIGHTING_STATE reposition() { // when stuck and cant move - reposition into
   
     forward_straight(200);
 
-    if(Ultradistance < 15 || IR_LONG_1_DIST <= 16 || IR_LONG_2_DIST <= 16) { // if obstacle detected
+    if(Ultradistance < 10 || IR_LONG_1_DIST <= 13 || IR_LONG_2_DIST <= 13) { // if obstacle detected
       stop();
       break;
     }
@@ -869,7 +913,7 @@ FIRE_FIGHTING_STATE reposition() { // when stuck and cant move - reposition into
   
     forward_straight(200);
 
-    if(Ultradistance < 15 || IR_LONG_1_DIST <= 16 || IR_LONG_2_DIST <= 16) { // if obstacle detected
+    if(Ultradistance < 10 || IR_LONG_1_DIST <= 13 || IR_LONG_2_DIST <= 13) { // if obstacle detected
       stop();
       break;
     }
@@ -957,17 +1001,17 @@ void align_fan() {
   
   phototransistors();
   
-  while(abs(PT2_reading - PT3_reading) > 50) { // read middle phototransistors
-    if((PT2_reading * 1.05) > PT3_reading) { // ccw
-      align_servo_val += 20; // increment ccw servo position
+  while(abs(PT2_reading - PT3_reading) > 40) { // read middle phototransistors
+    if((PT2_reading * 1.03) > PT3_reading) { // ccw
+      align_servo_val += 15; // increment ccw servo position
       turret_motor.writeMicroseconds(align_servo_val);
     }
     else { // cw
-      align_servo_val -= 20; // increment cw servo position
+      align_servo_val -= 15; // increment cw servo position
       turret_motor.writeMicroseconds(align_servo_val);
     }
     
-    delay(100);//****** was 10 before
+    delay(50);//****** was 10 before
     phototransistors(); // read phototransistors
   }
 }
@@ -1013,27 +1057,27 @@ void cw(int speedval)
 void forward_towards_fire(int speedval) // drives forward towards fire
 {
   // remove gyroCorrection and add PT_correction if using closed loop alignement
-  left_front_motor.writeMicroseconds(1500 + speedval + PT_correction);
-  left_rear_motor.writeMicroseconds(1500 + speedval + PT_correction);
-  right_rear_motor.writeMicroseconds(1500 - speedval + PT_correction);
-  right_front_motor.writeMicroseconds(1500 - speedval + PT_correction);
+  left_front_motor.writeMicroseconds(1500 + speedval + PT_correction - extra_powerL);
+  left_rear_motor.writeMicroseconds(1500 + speedval + PT_correction - extra_powerL);
+  right_rear_motor.writeMicroseconds(1500 - speedval + PT_correction + extra_powerR);
+  right_front_motor.writeMicroseconds(1500 - speedval + PT_correction + extra_powerR);
 }
 
 void forward_straight(int speedval) // drives forward straight
 {
   // remove gyroCorrection and add PT_correction if using closed loop alignement
-  left_front_motor.writeMicroseconds(1500 + speedval - gyroCorrection);
-  left_rear_motor.writeMicroseconds(1500 + speedval - gyroCorrection);
-  right_rear_motor.writeMicroseconds(1500 - speedval - gyroCorrection);
-  right_front_motor.writeMicroseconds(1500 - speedval - gyroCorrection);
+  left_front_motor.writeMicroseconds(1500 + speedval - gyroCorrection - extra_power_passL);
+  left_rear_motor.writeMicroseconds(1500 + speedval - gyroCorrection - extra_power_passL);
+  right_rear_motor.writeMicroseconds(1500 - speedval - gyroCorrection + extra_power_passR);
+  right_front_motor.writeMicroseconds(1500 - speedval - gyroCorrection + extra_power_passR);
 }
 
 void strafe(float speedval) // +ve = right, -ve = left correcting for angular rotation and x direction
 {
-  left_front_motor.writeMicroseconds(1500 + speedval - (speedval/4.4) - gyroCorrection);
-  left_rear_motor.writeMicroseconds(1500 - speedval - (speedval/4.4) - gyroCorrection);
-  right_rear_motor.writeMicroseconds(1500 - speedval + (speedval/4.4) - gyroCorrection);
-  right_front_motor.writeMicroseconds(1500 + speedval + (speedval/4.4) - gyroCorrection);
+  left_front_motor.writeMicroseconds(1500 + speedval - (speedval/4.35) - gyroCorrection);
+  left_rear_motor.writeMicroseconds(1500 - speedval - (speedval/4.35) - gyroCorrection);
+  right_rear_motor.writeMicroseconds(1500 - speedval + (speedval/4.35) - gyroCorrection);
+  right_front_motor.writeMicroseconds(1500 + speedval + (speedval/4.35) - gyroCorrection);
 }
 //----OPEN LOOP TURNING FUNCTIONS----
 
@@ -1152,6 +1196,10 @@ void IR_Sensors() { // Calculates distances from centre of robot to where IR det
 }
 
 void Gyro() { // could be tuned better
+  if(first_call) {
+    first_call = false;
+    prev_gyroTime = millis();
+  }
   gyroTime = millis();
 
   timeElapsed = gyroTime - prev_gyroTime;
