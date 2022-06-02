@@ -12,7 +12,6 @@ enum STATE {
 //State machine states when RUNNING
 enum RUN_STATE {
   DETECT,
-  REPOSITION,
   FIND_FIRE,
   END,
 };
@@ -24,6 +23,7 @@ enum FIRE_FIGHTING_STATE {
   STRAFE_LEFT,
   STRAFE_RIGHT,
   EXTINGUISH,
+  REPOSITION,
 };
 
 //Refer to Shield Pinouts.jpg for pin locations
@@ -95,6 +95,8 @@ float sensor_noise = 6;    // Change the value of sensor noise to get different 
 bool left_IR_close = false; 
 bool right_IR_close = false;
 bool ultrasonic_close = false;
+bool l_side_IR_close = false;
+bool r_side_IR_close = false;
 //----Boolean variables for which sensor detects obstacle----
 
 //----Phototransistors----
@@ -118,20 +120,23 @@ float Kp_align = 150;
 float PT_correction = 0;
 
 int repos_time = 0; // time for robot to drive forward to reposition
-const int min_detect_threshold = 0; // minimum value to know if fire is present - SUBJECT TO CHANGE 
-const int detection_threshold = 1500; // when close to fire - SUBJECT TO CHANGE
+int min_detect_threshold = 60; // minimum value to know if fire is present - SUBJECT TO CHANGE 
+const int detection_threshold = 1700; // when close to fire - SUBJECT TO CHANGE
 //----Phototransistors----
 
 //----Obstacle Avoidance----
 bool strafed_left = false;
 bool strafed_right = false;
 bool strafe_reversed = false;
+bool between = false;
 int strafe_left_time = 0;
 int strafe_reverse_left_time = 0;
 int strafe_right_time = 0;
 int strafe_reverse_right_time = 0;
+int strafe_reverse_count = 0;
 bool pass = false;
 int pass_start_time = 0;
+int between_time = 0;
 //----Obstacle Avoidance----
 
 //----Fire Fighting----
@@ -246,10 +251,10 @@ float ang_vel[4] = {0, 0, 0, 0};
 float motor_speed_Value[4] = {0, 0, 0, 0};
 //----InverseKinematicValues----
 
-//----PIDValues----
 float reference = 0;
 float currentTime, previousTime, elapsedTime;
 float turningTime = 0; // for acceleration when turning
+//----PIDValues----
 float drivingTime = 0; // for acceleration when driving X and Y
 float initalTime = 0;
 float error = 0;
@@ -322,9 +327,6 @@ STATE running() {
   switch (running_state) {
     case DETECT:
       running_state = detect();
-      break;
-    case REPOSITION: // if no fire detected in DETECT, reposition robot
-      running_state = reposition();
       break;
     case FIND_FIRE:
       running_state = find_fire();
@@ -407,7 +409,7 @@ RUN_STATE detect() { // initial detection and alignment towards fire from starti
       PT_ratio = 1.0 / PT_ratio;
     }
     
-    if(PT_sum > 60 && PT_ratio < ratio_threshold) {
+    if(PT_sum > min_detect_threshold && PT_ratio < ratio_threshold) {
       stop();
       break;
     }
@@ -431,37 +433,6 @@ RUN_STATE detect() { // initial detection and alignment towards fire from starti
   }
 
   return FIND_FIRE;
-}
-
-RUN_STATE reposition() {
-  static int power = 100; // Could potentially decrease power depending on how close to obstacle - making stopping less abrupt
-
-  // Get sensor readings
-  Ultrasound();
-  IR_Sensors();
-  Gyro();
-
-  forward_straight(power); // set motor power forward
-
-  // Sweep servo for full range and read PTs
-  Sweep_repos();
-  phototransistors();
-
-  if(PT_sum > min_detect_threshold) {
-    stop();
-    delay(100);
-    return DETECT; // COULD MAYBE RETURN FORWARD_DEFAULT BASED ON HOW EFECTIVE IT IS AT ALIGNING TOWARDS FIRE
-    // return FORWARD_DEFAULT;
-  }
-  else if(Ultradistance < 15 || IR_LONG_1_DIST <= 16 || IR_LONG_2_DIST <= 16) { // if obstacle reached - could slow down to a stop 20cm away
-    stop();
-    delay(100);
-    rotate(180);
-    return REPOSITION;
-  }
-  else {
-    return REPOSITION;
-  }
 }
 
 
@@ -488,13 +459,16 @@ RUN_STATE find_fire() {
     case EXTINGUISH:
       state = extinguish();
       break;
+    case REPOSITION: // if no fire detected in DETECT, reposition robot
+      state = reposition();
+      break;
   };
 
   if(numFires == 1 && extinguished) { // if one fire has just been extinguished - find other fire
     extinguished = false;
+    min_detect_threshold = 40;
     forward_straight(-150);
-    delay(100);
-    //rotate(180);
+    delay(50);
     return DETECT;
   }
   else if(numFires == 2) { // end when all fires detected
@@ -513,24 +487,41 @@ RUN_STATE complete() {
 FIRE_FIGHTING_STATE forward_default() { // default driving forward
   static int power = 200; // Could potentially decrease power depending on how close to obstacle - making stopping less abrupt
   pass = false;
+  strafe_reverse_count = 0;
   
   Ultrasound();
   IR_Sensors();
-  //Gyro(); // dont need gyro if using Update()
-  Update(); // alignment to fire using PTs and applying gain - TEST
-  //Sweep(); // alignment to fire using servo and rotating after each sweep - TEST
+  Update(); // alignment to fire using PTs and applying gain
 
   // SIDE OBSTACLE DETECTION
   if(IR_MID_1_DIST <= 12) {
+    l_side_IR_close = true;
+  }
+  else {
+    l_side_IR_close = false;
+  }
+  
+  if(IR_MID_2_DIST <= 12) {
+    r_side_IR_close = true;
+  }
+  else {
+    r_side_IR_close = false;
+  }
+
+  if(l_side_IR_close && r_side_IR_close) {
+    forward_towards_fire(power);
+  }
+  else if(l_side_IR_close) {
     stop();
     rotate(15);
   }
-  else if(IR_MID_2_DIST <= 12) {
+  else if(r_side_IR_close) {
     stop();
     rotate(-15);
   }
-
-  forward_towards_fire(power); // set motor power forward
+  else {
+    forward_towards_fire(power); // set motor power forward
+  }
 
   // FRONT OBSTACLE DETECTION
   if(Ultradistance < 15 || IR_LONG_1_DIST <= 16 || IR_LONG_2_DIST <= 16) {
@@ -558,7 +549,7 @@ FIRE_FIGHTING_STATE forward_default() { // default driving forward
 
     phototransistors();
     
-    if(PT_sum > detection_threshold) {
+    if(PT_left > detection_threshold / 2 || PT_right > detection_threshold / 2) {
       return EXTINGUISH;
     }
     else if(left_IR_close) { // direction of strafe depending on front IR readings
@@ -601,8 +592,10 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
   int power = 200;
   pass = true;
   pass_start_time = millis(); // get starting time
+
+  strafe_reverse_count = 0;
   
-  while((millis() - pass_start_time) < 1500) { // drive forward until 1500ms elapsed
+  while((millis() - pass_start_time) < 1250) { // drive forward until 1500ms elapsed
     IR_Sensors();
     Ultrasound();
     Gyro();
@@ -644,7 +637,7 @@ FIRE_FIGHTING_STATE forward_pass() { // driving forward to pass obstacle
       phototransistors();
       //is_fire_close();
       
-      if(PT_sum > detection_threshold) { // put out fire if detected
+      if(PT_left > detection_threshold / 2 || PT_right > detection_threshold / 2) { // put out fire if detected
         return EXTINGUISH;
       }
       else {
@@ -739,6 +732,7 @@ FIRE_FIGHTING_STATE strafe_left() {
       stop();
       strafed_left = false;
       strafe_reversed = true;
+      strafe_reverse_count++;
       strafe_reverse_right_time = millis() - strafe_left_time; // time needed to strafe back
       return STRAFE_RIGHT;
   }
@@ -810,11 +804,17 @@ FIRE_FIGHTING_STATE strafe_right() {
       stop();
       strafed_right = false;
       strafe_reversed = true;
+      strafe_reverse_count++;
       strafe_reverse_left_time = millis() - strafe_right_time; // time needed to strafe back
       return STRAFE_LEFT;
   }
 
   if(strafe_reversed) {
+    if(strafe_reverse_count > 1) {
+      stop();
+      strafe_reverse_count = 0;
+      return REPOSITION;
+    }
     reverse_time = millis();
     while(millis() - reverse_time < strafe_reverse_right_time) {
       Gyro();
@@ -877,7 +877,7 @@ FIRE_FIGHTING_STATE extinguish() { // extinguish fire state
   fire_is_close = false;
   strafed_right = false;
   strafed_left = false;
-  return;
+  return FORWARD_DEFAULT;;
 }
 
 void rotate(float angle) { // Rotates robot using PID control - MIGHT NEED TO ADJUST GAINS DEPENDING ON ANGLE - TEST IF CCW IS +VE or -VE
@@ -907,33 +907,35 @@ void rotate(float angle) { // Rotates robot using PID control - MIGHT NEED TO AD
   stop(); // stop motors
 }
 
-void rotate_small(float angle) { // P Control rotate function for small angles
-  float power;
 
-  angle = angle * (PI / 180);
+FIRE_FIGHTING_STATE reposition() { // when stuck and cant move - reposition into new position and detect fire again 
+  static int power = 100; // Could potentially decrease power depending on how close to obstacle - making stopping less abrupt
 
-  currentAngle = 0;
+  // Get sensor readings
+  Ultrasound();
+  IR_Sensors();
+  Gyro();
 
-  do {
-    Gyro();
-    power = (angle - radiansAngle) * Kp_turn;
+  forward_straight(power); // set motor power forward
 
-    // constrain
-    if (power > 120) {
-      power = 120;
-    }
-    else if (power < -120) {
-      power = -120;
-    }
+  // Sweep servo for full range and read PTs
+  phototransistors();
 
-    // send power
-    left_front_motor.writeMicroseconds(1500 + power);
-    left_rear_motor.writeMicroseconds(1500 + power);
-    right_rear_motor.writeMicroseconds(1500 + power);
-    right_front_motor.writeMicroseconds(1500 + power);
-  } while (abs(radiansAngle) < abs(angle)); // exit condition
-
-  return;
+  if(PT_sum > min_detect_threshold) {
+    stop();
+    delay(100);
+    return FORWARD_DEFULT; // COULD MAYBE RETURN FORWARD_DEFAULT BASED ON HOW EFECTIVE IT IS AT ALIGNING TOWARDS FIRE
+    // return FORWARD_DEFAULT;
+  }
+  else if(Ultradistance < 15 || IR_LONG_1_DIST <= 16 || IR_LONG_2_DIST <= 16) { // if obstacle reached - could slow down to a stop 20cm away
+    stop();
+    delay(100);
+    rotate(180);
+    return REPOSITION;
+  }
+  else {
+    return REPOSITION;
+  }
 }
 
 void Update() { // FIRE ALIGNMENT IMPLEMENTATION 1
@@ -956,69 +958,6 @@ void Update() { // FIRE ALIGNMENT IMPLEMENTATION 1
   }
 }
 
-void Sweep() { // FIRE ALIGNMENT IMPLEMENTATION 2
-  static int servo_val = 900;
-  static int aligned_servo_val = 0;
-  static float min_PT_ratio = 999;
-  static bool CCW = true;
-  static int ccw_val = 1800;
-  static int cw_val = 1200;
-  phototransistors();
-
-  if(PT_ratio < 1) { // ensures PT_ratio is always >= 1
-    PT_ratio = 1.0 / PT_ratio;
-  }
-
-  if(PT_ratio - 1 < min_PT_ratio) { // if phototransistors ratio lower, update min ratio and servo value
-    min_PT_ratio = PT_ratio - 1;
-    aligned_servo_val = servo_val; // updates aligned servo position
-  }
-
-  if(CCW) { // sweep ccw
-    servo_val += 100;
-    if(servo_val == ccw_val) {
-      CCW = false;
-      stop();
-      rotate((1500 - aligned_servo_val) / 10); // reorient towards fire - MOST LIKELY NEED TO ADJUST GAINS (ANGLE TOO SMALL)
-    }
-  }
-  else if(!CCW) { // sweep cw
-    servo_val -= 100;
-    if(servo_val == cw_val) {
-      CCW = true;
-      stop();
-      rotate((1500 - aligned_servo_val) / 10); // reorient towards fire - MOST LIKELY NEED TO ADJUST GAINS (ANGLE TOO SMALL)
-    }
-  }
-  
-  turret_motor.writeMicroseconds(servo_val); // set turret angle
-  delay(50); // might need to use sampling
-}
-
-void Sweep_repos() { // Sweeps fan when repositioning if fire not detected
-  static int servo_val = 1500;
-  static int aligned_servo_val = 0;
-  static float min_PT_ratio = 999;
-  static bool CCW = true;
-  static int ccw_val = 2100;
-  static int cw_val = 900;
-
-  if(CCW) { // sweep ccw
-    servo_val += 300;
-    if(servo_val == ccw_val) {
-      CCW = false;
-    }
-  }
-  else if(!CCW) { // sweep cw
-    servo_val -= 300;
-    if(servo_val == cw_val) {
-      CCW = true;
-    }
-  }
-  
-  turret_motor.writeMicroseconds(servo_val); // set turret angle
-  delay(50); // might need to use sampling
-}
 
 void is_fire_close() {
   //int prev_pos = turret_motor.read(); // read where servo is currently
@@ -1058,25 +997,6 @@ void align_fan() {
     }
     
     delay(100);//****** was 10 before
-    phototransistors(); // read phototransistors
-  }
-}
-
-void align_robot() { // aligns robot to fire using PTs
-  int aligned_servo_val = 1450;
-    
-  turret_motor.writeMicroseconds(aligned_servo_val);
-  phototransistors();
-
-  while(abs(PT_left - PT_right) > 10) { // read middle phototransistors
-    if(PT_left > PT_right) { // ccw
-      ccw(80);
-    }
-    else { // cw
-      cw(80);
-    }
-    delay(20);
-    
     phototransistors(); // read phototransistors
   }
 }
